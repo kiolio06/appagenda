@@ -36,24 +36,40 @@ class Horario(BaseModel):
     sede_id: str = Field(..., description="ID de sede ej: 001") 
     disponibilidad: List[DiaDisponible]
 
-# === BLOQUEO ===
+class RepeatRule(BaseModel):
+    type: str  # "weekly"
+    days_of_week: List[int]  # 0=lunes ... 6=domingo
+    until: Optional[date] = None
+    exclude_dates: List[date] = []
+    include_dates: List[date] = []
+
 class Bloqueo(BaseModel):
     profesional_id: str
     sede_id: str
-    fecha: date
-    hora_inicio: str
-    hora_fin: str
+    start_date: date
+    start_time: str  # "HH:MM"
+    end_time: str
+    repeat: RepeatRule
     motivo: Optional[str] = None
 
 class ServicioEnCita(BaseModel):
     servicio_id: str
     precio_personalizado: Optional[float] = None  # Puede ser None, 0, o un número positivo
+    cantidad: Optional[int] = 1
     
     @validator('precio_personalizado')
     def validar_precio(cls, v):
         # Si es 0, convertir a None (significa "usar precio de BD")
         if v is not None and v == 0:
             return None
+        return v
+
+    @validator('cantidad')
+    def validar_cantidad(cls, v):
+        if v is None:
+            return 1
+        if v < 1:
+            raise ValueError("La cantidad debe ser mayor o igual a 1")
         return v
 
 # === CITA ===
@@ -69,6 +85,7 @@ class Cita(BaseModel):
     metodo_pago_inicial: Optional[str] = "sin_pago"
     abono: Optional[float] = 0
     notas: Optional[str] = None
+    codigo_giftcard: Optional[str] = None   # ⭐ NUEVO: código si paga con giftcard
 
 class ServicioEnFicha(BaseModel):
     """Servicio dentro de una ficha técnica"""
@@ -126,3 +143,5 @@ class ProductoItem(BaseModel):
 class PagoRequest(BaseModel):
     monto: float
     metodo_pago: Optional[str] = "efectivo"
+    notas: Optional[str] = None
+    codigo_giftcard: Optional[str] = None  # ⭐ requerido si metodo_pago == "giftcard"
