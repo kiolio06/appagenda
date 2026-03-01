@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Sidebar } from "../../../components/Layout/Sidebar";
+import { PageHeader } from "../../../components/Layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { SalesChart } from "./sales-chart";
 import { SalesDonutChart } from "./sales-donut-chart";
@@ -775,17 +776,13 @@ export default function DashboardPage() {
         {/* Top Bar */}
         <div className="border-b border-gray-200 bg-white px-8 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3">
-              <div>
-                <h1 className="text-2xl font-bold">Dashboard Financiero</h1>
-                <p className="text-sm text-gray-600">
-                  {dashboardData?.descripcion || "Métricas basadas en ventas pagadas"}
-                  <span className="ml-2 text-xs font-medium text-gray-500">
-                    (Moneda: {metricas.moneda}) • (País: {user?.pais || 'Colombia'})
-                  </span>
-                </p>
-              </div>
-            </div>
+            <PageHeader
+              title="Dashboard"
+              subtitle={`${
+                dashboardData?.descripcion || "Métricas basadas en ventas pagadas"
+              } · Moneda: ${metricas.moneda} · País: ${user?.pais || "Colombia"}`}
+              className="mb-0"
+            />
 
             <div className="flex flex-wrap items-center gap-3">
               {/* Filtro de período */}

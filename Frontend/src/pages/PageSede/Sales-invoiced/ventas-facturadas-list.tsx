@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { Search, Loader2, Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
+import { PageHeader } from "../../../components/Layout/PageHeader"
 import { FacturaDetailModal } from "./factura-detail-modal"
 import type { Factura } from "../../../types/factura"
 import { facturaService } from "./facturas"
@@ -41,9 +42,6 @@ export function VentasFacturadasList() {
   const [appliedFilters, setAppliedFilters] = useState<FacturaFilters>(EMPTY_FACTURA_FILTERS)
   const [limit, ] = useState(50)
   const [paymentSummary, setPaymentSummary] = useState<PaymentMethodTotals | null>(null)
-
-  // Obtener datos de la sede desde sessionStorage
-  const sedeId = sessionStorage.getItem("beaux-sede_id")
 
   // Cargar facturas al montar el componente
   useEffect(() => {
@@ -230,15 +228,7 @@ export function VentasFacturadasList() {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Ventas facturadas</h1>
-            {sedeId && (
-              <p className="text-sm text-gray-600 mt-1">
-              </p>
-            )}
-          </div>  
-        </div>
+        <PageHeader title="Ventas Facturadas" />
 
         {/* Filtros */}
         <div className="bg-white rounded-lg border border-gray-200 p-4">

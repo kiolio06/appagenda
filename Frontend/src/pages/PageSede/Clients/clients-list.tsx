@@ -13,6 +13,7 @@ import {
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Badge } from "../../../components/ui/badge"
+import { PageHeader } from "../../../components/Layout/PageHeader"
 import type { Cliente } from "../../../types/cliente"
 
 interface ClientsListProps {
@@ -212,23 +213,22 @@ function ClientsListComponent({
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="border-b border-gray-100 px-4 py-3">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            {metadata && (
-              <p className="text-xs text-gray-500 mt-1">
-              </p>
-            )}
-          </div>
-          <Button
-            onClick={onAddClient}
-            variant="outline"
-            size="sm"
-            className="border-gray-300 text-gray-700 hover:bg-gray-50"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            <span className="text-xs">Nuevo</span>
-          </Button>
-        </div>
+        <PageHeader
+          title="Clientes"
+          subtitle={metadata ? `${metadata.total} clientes` : `${clientes.length} clientes`}
+          actions={
+            <Button
+              onClick={onAddClient}
+              variant="outline"
+              size="sm"
+              className="border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              <span className="text-xs">Nuevo</span>
+            </Button>
+          }
+          className="mb-3"
+        />
         
         {/* Filtros */}
         <div className="space-y-2">

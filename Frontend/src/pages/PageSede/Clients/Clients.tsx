@@ -83,7 +83,7 @@ export default function ClientsPage() {
   const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [sedes, setSedes] = useState<any[]>([])
-  const [itemsPorPagina, setItemsPorPagina] = useState(10)
+  const [itemsPorPagina] = useState(10)
   const hasLoadedInitialRef = useRef(false)
   const latestRequestIdRef = useRef(0)
   const latestCedulaHydrationRef = useRef(0)
@@ -163,13 +163,14 @@ export default function ClientsPage() {
       console.error("❌ Error cargando clientes:", err)
       setError(err instanceof Error ? err.message : "Error al cargar los clientes")
     } finally {
-      if (requestId !== latestRequestIdRef.current) return
-
       if (isInitialRequest) {
+        // Evita quedarse bloqueado en loading si la request inicial queda obsoleta
         setIsInitialLoading(false)
-      } else {
-        setIsFetching(false)
+        return
       }
+
+      if (requestId !== latestRequestIdRef.current) return
+      setIsFetching(false)
     }
   }, [getAccessToken, itemsPorPagina, applyCedulaCache])
 
@@ -270,10 +271,6 @@ export default function ClientsPage() {
     setSearchTerm(value)
   }, [])
 
-  const handleItemsPerPageChange = useCallback((value: number) => {
-    setItemsPorPagina(value)
-  }, [])
-
   const handleSelectClient = useCallback(async (client: Cliente) => {
     const token = getAccessToken()
     if (!token) return
@@ -360,55 +357,17 @@ export default function ClientsPage() {
             onClientUpdated={handleClientUpdated}
           />
         ) : (
-          <>
-            {/* Controles de cantidad por página */}
-            <div className="border-b border-gray-100 p-4 bg-white">
-              <div className="max-w-6xl mx-auto flex items-center justify-between">
-                <div>
-                  <h1 className="text-lg font-medium text-gray-900">Clientes</h1>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {metadata
-                      ? `Mostrando ${clientes.length} de ${metadata.total} clientes`
-                      : `${clientes.length} clientes`}
-                  </p>
-                </div>
-                
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-700">Mostrar:</span>
-                    <select
-                      value={itemsPorPagina}
-                      onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                      className="h-8 text-sm border border-gray-300 rounded px-2 focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
-                    >
-                      <option value="10">10</option>
-                      <option value="25">25</option>
-                      <option value="50">50</option>
-                      <option value="100">100</option>
-                    </select>
-                    <span className="text-xs text-gray-500">por página</span>
-                  </div>
-                </div>
-              </div>
-              {error && (
-                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-                  Error: {error}
-                </div>
-              )}
-            </div>
-            
-            <ClientsList
-              onSelectClient={handleSelectClient}
-              onAddClient={handleAddClient}
-              clientes={clientes}
-              metadata={metadata || undefined}
-              error={error}
-              isFetching={isFetching}
-              onPageChange={handlePageChange}
-              onSearch={handleSearch}
-              searchValue={searchTerm}
-            />
-          </>
+          <ClientsList
+            onSelectClient={handleSelectClient}
+            onAddClient={handleAddClient}
+            clientes={clientes}
+            metadata={metadata || undefined}
+            error={error}
+            isFetching={isFetching}
+            onPageChange={handlePageChange}
+            onSearch={handleSearch}
+            searchValue={searchTerm}
+          />
         )}
       </div>
 

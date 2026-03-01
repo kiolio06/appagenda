@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "../../../components/Layout/Sidebar";
+import { PageHeader } from "../../../components/Layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { SalesChart } from "./sales-chart";
 import { SalesDonutChart } from "./sales-donut-chart";
@@ -1026,22 +1027,15 @@ export default function DashboardPage() {
         {/* Top Bar */}
         <div className="border-b border-gray-100 bg-white px-6 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-gray-900 rounded-lg">
-                <BarChart3 className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                  <h1 className="text-xl font-bold text-gray-900">Dashboard Analytics</h1>
-                  <p className="text-sm text-gray-600">
-                    {selectedSede === "global"
-                      ? 'Vista Global'
-                      : `Sede: ${getSedeNombre(selectedSede)}`}
-                  </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Período: {getPeriodDisplay()}
-                </p>
-              </div>
-            </div>
+            <PageHeader
+              title="Dashboard"
+              subtitle={`${
+                selectedSede === "global"
+                  ? "Vista Global"
+                  : `Sede: ${getSedeNombre(selectedSede)}`
+              } · Período: ${getPeriodDisplay()}`}
+              className="mb-0"
+            />
 
             <div className="flex flex-wrap items-center gap-2">
               {/* Selector de período personalizado */}

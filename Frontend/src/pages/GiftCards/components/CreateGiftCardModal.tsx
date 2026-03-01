@@ -112,10 +112,7 @@ export function CreateGiftCardModal({
 }: CreateGiftCardModalProps) {
   const [knownClients, setKnownClients] = useState<GiftCardClientOption[]>([]);
   const [buyerOptions, setBuyerOptions] = useState<GiftCardClientOption[]>([]);
-  const [buyerPage, setBuyerPage] = useState(1);
-  const [hasMoreBuyerOptions, setHasMoreBuyerOptions] = useState(false);
   const [isLoadingClients, setIsLoadingClients] = useState(false);
-  const [isLoadingMoreClients, setIsLoadingMoreClients] = useState(false);
   const [clientsError, setClientsError] = useState<string | null>(null);
 
   const [amountMode, setAmountMode] = useState<AmountMode>("free");
@@ -141,6 +138,7 @@ export function CreateGiftCardModal({
     () => knownClients.find((client) => client.id === selectedBuyerId) ?? null,
     [knownClients, selectedBuyerId]
   );
+  const hasBuyerQuery = buyerSearch.trim().length > 0;
 
   const totalAmount = amountMode === "preset" ? presetAmount : toPositiveNumber(freeAmountInput);
 
@@ -151,10 +149,18 @@ export function CreateGiftCardModal({
     const requestId = ++latestBuyerSearchRequestRef.current;
     const query = buyerSearch.trim();
 
+    if (!query) {
+      setBuyerOptions([]);
+      setClientsError(null);
+      setIsLoadingClients(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     const loadClients = async () => {
       try {
         setIsLoadingClients(true);
-        setIsLoadingMoreClients(false);
         setClientsError(null);
 
         const result = await giftcardsService.searchClientsForSelector(token, query, {
@@ -164,14 +170,11 @@ export function CreateGiftCardModal({
 
         if (cancelled || requestId !== latestBuyerSearchRequestRef.current) return;
 
-        setBuyerPage(result.page);
-        setHasMoreBuyerOptions(result.hasNext);
         setBuyerOptions(result.clients);
         setKnownClients((prev) => mergeClientOptions(prev, result.clients));
       } catch (error) {
         if (cancelled || requestId !== latestBuyerSearchRequestRef.current) return;
         setBuyerOptions([]);
-        setHasMoreBuyerOptions(false);
         setClientsError(error instanceof Error ? error.message : "No se pudieron cargar clientes");
       } finally {
         if (!cancelled && requestId === latestBuyerSearchRequestRef.current) {
@@ -191,40 +194,6 @@ export function CreateGiftCardModal({
     };
   }, [open, token, buyerSearch]);
 
-  const loadMoreBuyerOptions = async () => {
-    if (!open || !token || isLoadingMoreClients || isLoadingClients || !hasMoreBuyerOptions) {
-      return;
-    }
-
-    const query = buyerSearch.trim();
-    const nextPage = buyerPage + 1;
-    const requestId = latestBuyerSearchRequestRef.current;
-
-    try {
-      setIsLoadingMoreClients(true);
-      setClientsError(null);
-
-      const result = await giftcardsService.searchClientsForSelector(token, query, {
-        limit: CLIENTS_SEARCH_PAGE_SIZE,
-        page: nextPage,
-      });
-
-      if (requestId !== latestBuyerSearchRequestRef.current) return;
-
-      setBuyerPage(result.page);
-      setHasMoreBuyerOptions(result.hasNext);
-      setBuyerOptions((prev) => mergeClientOptions(prev, result.clients));
-      setKnownClients((prev) => mergeClientOptions(prev, result.clients));
-    } catch (error) {
-      if (requestId !== latestBuyerSearchRequestRef.current) return;
-      setClientsError(error instanceof Error ? error.message : "No se pudieron cargar más clientes");
-    } finally {
-      if (requestId === latestBuyerSearchRequestRef.current) {
-        setIsLoadingMoreClients(false);
-      }
-    }
-  };
-
   useEffect(() => {
     if (!open) {
       setFormError(null);
@@ -240,9 +209,6 @@ export function CreateGiftCardModal({
       setOptionalMessage("");
       setValidityMode("annual");
       setCustomExpiryDate(getDateInputFromToday(365));
-      setBuyerPage(1);
-      setHasMoreBuyerOptions(false);
-      setIsLoadingMoreClients(false);
       setPaymentMethod("efectivo");
       return;
     }
@@ -447,70 +413,54 @@ export function CreateGiftCardModal({
               <p className="text-xs text-gray-500">Selecciona un cliente comprador de la lista.</p>
             )}
 
-            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-              <div className="max-h-56 overflow-y-auto">
-                {!isLoadingClients && buyerOptions.length === 0 ? (
-                  <p className="px-3 py-3 text-xs text-gray-500">
-                    No hay resultados para la búsqueda actual.
-                  </p>
-                ) : (
-                  buyerOptions.map((client) => {
-                    const isSelected = client.id === selectedBuyerId;
+            {hasBuyerQuery ? (
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <div className="max-h-56 overflow-y-auto">
+                  {!isLoadingClients && buyerOptions.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-gray-500">
+                      No hay resultados para la búsqueda actual.
+                    </p>
+                  ) : (
+                    buyerOptions.map((client) => {
+                      const isSelected = client.id === selectedBuyerId;
 
-                    return (
-                      <button
-                        key={client.id}
-                        type="button"
-                        onClick={() => setSelectedBuyerId(client.id)}
-                        className={`flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 ${
-                          isSelected ? "bg-gray-100" : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-gray-900">{client.nombre}</p>
-                          <p className="truncate text-xs text-gray-500">
-                            {client.email || client.telefono || "Sin datos de contacto"}
-                          </p>
-                        </div>
-                        {isSelected ? (
-                          <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
-                            Seleccionado
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-
-              {hasMoreBuyerOptions ? (
-                <div className="border-t border-gray-200 px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => void loadMoreBuyerOptions()}
-                    disabled={isLoadingMoreClients || isLoadingClients}
-                    className="inline-flex items-center gap-2 text-xs font-medium text-gray-700 hover:text-gray-900 disabled:cursor-not-allowed disabled:text-gray-400"
-                  >
-                    {isLoadingMoreClients ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        Cargando más clientes...
-                      </>
-                    ) : (
-                      "Cargar más clientes"
-                    )}
-                  </button>
+                      return (
+                        <button
+                          key={client.id}
+                          type="button"
+                          onClick={() => setSelectedBuyerId(client.id)}
+                          className={`flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 ${
+                            isSelected ? "bg-gray-100" : "hover:bg-gray-50"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-900">{client.nombre}</p>
+                            <p className="truncate text-xs text-gray-500">
+                              {client.email || client.telefono || "Sin datos de contacto"}
+                            </p>
+                          </div>
+                          {isSelected ? (
+                            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+                              Seleccionado
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">Escribe el nombre del cliente para buscar.</p>
+            )}
 
-            {isLoadingClients ? (
+            {hasBuyerQuery && isLoadingClients ? (
               <div className="flex items-center gap-2 text-xs text-gray-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Cargando clientes...
               </div>
             ) : null}
-            {clientsError ? <p className="text-xs text-amber-700">{clientsError}</p> : null}
+            {hasBuyerQuery && clientsError ? <p className="text-xs text-amber-700">{clientsError}</p> : null}
           </section>
 
           <section className="space-y-3">

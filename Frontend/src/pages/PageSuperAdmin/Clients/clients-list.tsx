@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
+import { PageHeader } from "../../../components/Layout/PageHeader"
 import {
   Select,
   SelectContent,
@@ -294,42 +295,42 @@ function ClientsListComponent({
   return (
     <div className="flex h-full flex-col">
       <div className="bg-white px-6 py-5 border-b border-gray-200">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {totalClientes} cliente{totalClientes !== 1 ? 's' : ''}
-              {searchValue && ` para "${searchValue}"`}
-            </p>
-            {isFetching && (
-              <div className="mt-2 inline-flex items-center gap-2 text-xs text-gray-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
-                <span>Actualizando clientes...</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {onExport && (
+        <PageHeader
+          title="Clientes"
+          subtitle={`${totalClientes} cliente${totalClientes !== 1 ? "s" : ""}${
+            searchValue ? ` para "${searchValue}"` : ""
+          }`}
+          actions={
+            <>
+              {onExport && (
+                <Button
+                  onClick={onExport}
+                  variant="outline"
+                  size="sm"
+                  className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar
+                </Button>
+              )}
               <Button
-                onClick={onExport}
-                variant="outline"
+                onClick={onAddClient}
+                className="bg-gray-900 hover:bg-gray-800 text-white"
                 size="sm"
-                className="bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900"
               >
-                <Download className="h-4 w-4 mr-2" />
-                Exportar
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Cliente
               </Button>
-            )}
-            <Button
-              onClick={onAddClient}
-              className="bg-gray-900 hover:bg-gray-800 text-white"
-              size="sm"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Cliente
-            </Button>
+            </>
+          }
+          className="mb-5"
+        />
+        {isFetching && (
+          <div className="mb-4 inline-flex items-center gap-2 text-xs text-gray-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
+            <span>Actualizando clientes...</span>
           </div>
-        </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1 max-w-md">

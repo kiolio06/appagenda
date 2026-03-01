@@ -108,13 +108,14 @@ export default function ClientsPage() {
       setError(err instanceof Error ? err.message : 'Error al cargar los clientes')
       console.error('Error loading clients:', err)
     } finally {
-      if (requestId !== latestRequestIdRef.current) return
-
       if (isInitialRequest) {
+        // Evita quedarse bloqueado en loading si la request inicial queda obsoleta
         setIsInitialLoading(false)
-      } else {
-        setIsFetching(false)
+        return
       }
+
+      if (requestId !== latestRequestIdRef.current) return
+      setIsFetching(false)
     }
   }, [getAccessToken, itemsPorPagina, applyCedulaCache])
 
