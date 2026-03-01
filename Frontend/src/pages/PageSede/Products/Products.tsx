@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Search, Package, AlertTriangle, BarChart3, Loader2, Filter, ChevronRight, TrendingUp, TrendingDown, Box, Edit2, Save, X } from "lucide-react"
+import { Search, Package, AlertTriangle, BarChart3, Loader2, Filter, TrendingUp, TrendingDown, Box, Edit2, Save, X } from "lucide-react"
+import { PageHeader } from "../../../components/Layout/PageHeader"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../components/ui/card"
@@ -245,22 +246,11 @@ export function ProductsList() {
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                  <span>Dashboard</span>
-                  <ChevronRight className="h-3 w-3" />
-                  <span>Inventario</span>
-                  <ChevronRight className="h-3 w-3" />
-                  <span className="text-gray-700 font-medium">Productos</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Inventario</h1>
-                    <p className="text-gray-600 mt-2">
-                      Gestión de productos y control de stock
-                    </p>
-                  </div>
-
-                </div>
+                <PageHeader
+                  title="Productos"
+                  subtitle="Gestión de productos y control de stock"
+                  className="mb-0"
+                />
               </div>
             </div>
           </div>

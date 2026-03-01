@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Calendar, Plus, User, Clock, X, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Sidebar } from '../../../components/Layout/Sidebar';
+import { PageHeader } from '../../../components/Layout/PageHeader';
 import Bloqueos from "../../../components/Quotes/Bloqueos";
 import AppointmentScheduler from "../../../components/Quotes/AppointmentForm";
 import Modal from "../../../components/ui/modal";
@@ -1225,24 +1226,13 @@ const CalendarScheduler: React.FC = () => {
         {/* HEADER MÁS PEQUEÑO */}
         <div className="bg-white/80 backdrop-blur-lg border-b border-gray-200/60 p-4 shadow-sm">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-gray-100 rounded-lg">
-                <Calendar className="w-5 h-5 text-gray-900" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Calendario</h1>
-                <p className="text-xs text-gray-600">
-                  {formatDateDMY(selectedDate)} • {selectedSede?.nombre || 'Tu sede'}
-                  {loading && <span className="ml-1.5 inline-flex items-center gap-0.5 text-gray-600 text-[10px]"><Loader2 className="w-2.5 h-2.5 animate-spin" />Actualizando...</span>}
-                  {loadingBloqueos && <span className="ml-1.5 inline-flex items-center gap-0.5 text-gray-600 text-[10px]"><Loader2 className="w-2.5 h-2.5 animate-spin" />Bloqueos...</span>}
-                </p>
-                {user?.sede_id && (
-                  <div className="text-[10px] text-gray-500 mt-0.5">
-                    📍 Sede: {formatSedeNombre(sedes.find(s => s.sede_id === user.sede_id)?.nombre, 'Tu sede')}
-                  </div>
-                )}
-              </div>
-            </div>
+            <PageHeader
+              title="Agenda"
+              subtitle={`${formatDateDMY(selectedDate)} • ${selectedSede?.nombre || "Tu sede"}${
+                loading ? " · Actualizando..." : ""
+              }${loadingBloqueos ? " · Bloqueos..." : ""}`}
+              className="mb-0"
+            />
 
             <div className="flex items-center gap-2">
               <button onClick={() => setSelectedDate(today)} disabled={loading} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-xs hover:bg-gray-50 transition-colors flex items-center gap-1">

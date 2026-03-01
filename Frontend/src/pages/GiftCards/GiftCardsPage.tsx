@@ -10,6 +10,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { Sidebar } from "../../components/Layout/Sidebar";
+import { PageHeader } from "../../components/Layout/PageHeader";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Toaster } from "../../components/ui/toaster";
@@ -324,15 +325,10 @@ export default function GiftCardsPage() {
 
         <main className="flex-1 overflow-auto">
           <div className="mx-auto w-full max-w-[1180px] space-y-4 px-4 py-5 md:px-6 md:py-6">
-            <header className="rounded-xl border border-gray-200 bg-white px-5 py-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h1 className="text-4xl font-semibold tracking-tight text-gray-900">Gift Cards</h1>
-                  <p className="mt-1 text-base text-gray-500">
-                    Gestión de tarjetas de regalo emitidas y saldo disponible
-                  </p>
-                </div>
-
+            <PageHeader
+              title="Gift Cards"
+              subtitle="Gestión de tarjetas de regalo emitidas y saldo disponible"
+              actions={
                 <Button
                   className="h-10 bg-black text-white hover:bg-zinc-800"
                   onClick={() => setCreateModalOpen(true)}
@@ -341,8 +337,8 @@ export default function GiftCardsPage() {
                   <Plus className="mr-2 h-4 w-4" />
                   Nuevo
                 </Button>
-              </div>
-            </header>
+              }
+            />
 
             <GiftCardsSummaryCards
               activeCount={summaryMetrics.activeCount}

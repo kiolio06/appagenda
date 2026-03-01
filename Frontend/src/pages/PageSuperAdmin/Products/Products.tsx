@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Search, Package, AlertTriangle, Loader2, Filter, ChevronRight, Box, Edit2, Save, X, Plus } from "lucide-react"
+import { Search, Package, AlertTriangle, Loader2, Filter, Box, Edit2, Save, X, Plus } from "lucide-react"
+import { PageHeader } from "../../../components/Layout/PageHeader"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../components/ui/card"
@@ -461,19 +462,16 @@ export function ProductsList() {
           <div className="mb-8">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                  <span>Dashboard</span>
-                  <ChevronRight className="h-3 w-3" />
-                  <span>Inventario</span>
-                  <ChevronRight className="h-3 w-3" />
-                  <span className="text-gray-700 font-medium">Productos</span>
-                </div>
-                <h1 className="text-3xl font-bold text-gray-900">Inventario</h1>
-                <p className="text-gray-600 mt-2">
-                  Gestión de productos y control de stock
-                </p>
+                <PageHeader
+                  title="Productos"
+                  subtitle="Gestión de productos y control de stock"
+                  className="mb-0"
+                />
               </div>
-              <Button onClick={abrirModalCreacion} className="gap-2">
+              <Button
+                onClick={abrirModalCreacion}
+                className="gap-2 bg-gray-900 text-white hover:bg-gray-800"
+              >
                 <Plus className="h-4 w-4" />
                 Crear Producto
               </Button>
@@ -930,7 +928,7 @@ export function ProductsList() {
               type="button"
               onClick={crearInventario}
               disabled={isCreatingInventario || isLoadingCreateData || !nuevoProductoId || !nuevoSedeId}
-              className="gap-2"
+              className="gap-2 bg-gray-900 text-white hover:bg-gray-800"
             >
               {isCreatingInventario && <Loader2 className="h-4 w-4 animate-spin" />}
               Guardar

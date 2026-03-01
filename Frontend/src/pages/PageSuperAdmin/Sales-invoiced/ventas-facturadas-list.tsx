@@ -12,6 +12,7 @@ import {
   ChevronsRight,
 } from "lucide-react"
 import { FacturaDetailModal } from "./factura-detail-modal"
+import { PageHeader } from "../../../components/Layout/PageHeader"
 import type { Factura } from "../../../types/factura"
 import { facturaService } from "./facturas"
 import { sedeService } from "../Sedes/sedeService"
@@ -269,31 +270,30 @@ export function VentasFacturadasList() {
     <>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-medium">Ventas facturadas</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {selectedSede 
-                ? `Sede: ${selectedSedeNombre}`
-                : "Selecciona una sede para ver las facturas"}
-            </p>
-          </div>
-          
-          {selectedSede && facturasFiltradas.length > 0 && (
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-black hover:bg-gray-50"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Download className="h-3.5 w-3.5" />
-              )}
-              Exportar CSV
-            </button>
-          )}
-        </div>
+        <PageHeader
+          title="Ventas Facturadas"
+          subtitle={
+            selectedSede
+              ? `Sede: ${selectedSedeNombre}`
+              : "Selecciona una sede para ver las facturas"
+          }
+          actions={
+            selectedSede && facturasFiltradas.length > 0 ? (
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-black hover:bg-gray-50"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                Exportar CSV
+              </button>
+            ) : null
+          }
+        />
 
         {/* Selector de Sede */}
         <div className="mb-6">

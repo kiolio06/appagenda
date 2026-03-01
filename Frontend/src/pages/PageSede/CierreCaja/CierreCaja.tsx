@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "../../../components/Layout/Sidebar";
+import { PageHeader } from "../../../components/Layout/PageHeader";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 // import { Textarea } from "../../../components/ui/textarea";
@@ -775,12 +776,11 @@ export default function CierreCajaPage() {
       <Sidebar />
       <main className="flex-1 overflow-auto">
         <div className="p-8 space-y-6">
-          <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-bold text-gray-900">Cierre de Caja</h1>
-            <p className="text-sm text-gray-600">
-              {sedeNombre ? `Sede: ${sedeNombre}` : "Gestión por sede"}
-            </p>
-          </div>
+          <PageHeader
+            title="Cierre de Caja"
+            subtitle={sedeNombre ? `Sede: ${sedeNombre}` : "Gestión por sede"}
+            className="mb-0"
+          />
 
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
