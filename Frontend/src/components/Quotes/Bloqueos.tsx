@@ -798,7 +798,7 @@ const Bloqueos: React.FC<BloqueosProps> = ({
               onChange={(e) => handleInputChange('hora_inicio', e.target.value)}
               required
               inputClassName={controlClass}
-              showButton={!useCompactView}
+              showButton={false}
               openPickerOnInputClick
             />
           </div>
@@ -812,7 +812,7 @@ const Bloqueos: React.FC<BloqueosProps> = ({
               required
               min={minHoraFin}
               inputClassName={controlClass}
-              showButton={!useCompactView}
+              showButton={false}
               openPickerOnInputClick
             />
           </div>

@@ -43,23 +43,39 @@ export function VentasFacturadasList() {
   const [limit, ] = useState(50)
   const [paymentSummary, setPaymentSummary] = useState<PaymentMethodTotals | null>(null)
 
-  // Cargar facturas al montar el componente
-  useEffect(() => {
-    cargarFacturas(1, EMPTY_FACTURA_FILTERS)
-  }, [])
-
   // Formatear fecha actual para usar como valor por defecto
   const getCurrentDate = () => {
     const today = new Date()
-    return today.toISOString().split('T')[0]
+    const year = today.getFullYear()
+    const month = String(today.getMonth() + 1).padStart(2, "0")
+    const day = String(today.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
   }
 
   // Formatear fecha de hace 30 días
   const getDate30DaysAgo = () => {
     const date = new Date()
     date.setDate(date.getDate() - 30)
-    return date.toISOString().split('T')[0]
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const day = String(date.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
   }
+
+  // Cargar facturas al montar el componente (por defecto: hoy)
+  useEffect(() => {
+    const today = getCurrentDate()
+    const initialFilters: FacturaFilters = {
+      ...EMPTY_FACTURA_FILTERS,
+      fecha_desde: today,
+      fecha_hasta: today,
+    }
+
+    setFechaDesde(today)
+    setFechaHasta(today)
+    setAppliedFilters(initialFilters)
+    cargarFacturas(1, initialFilters)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cargarFacturas = async (page: number = 1, filtros: FacturaFilters = appliedFilters) => {
     try {
@@ -256,12 +272,20 @@ export function VentasFacturadasList() {
                 Fecha desde
               </label>
               <div className="relative">
-                <Calendar className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                <Input
+                  type="text"
+                  value={formatDateDMY(fechaDesde, "")}
+                  readOnly
+                  placeholder="DD-MM-YYYY"
+                  className="h-9 pl-8 text-sm"
+                  disabled={isLoading}
+                />
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                 <Input
                   type="date"
                   value={fechaDesde}
                   onChange={(e) => setFechaDesde(e.target.value)}
-                  className="h-9 pl-8 text-sm"
+                  className="absolute inset-0 h-9 w-full cursor-pointer opacity-0"
                   disabled={isLoading}
                 />
               </div>
@@ -273,12 +297,20 @@ export function VentasFacturadasList() {
                 Fecha hasta
               </label>
               <div className="relative">
-                <Calendar className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                <Input
+                  type="text"
+                  value={formatDateDMY(fechaHasta, "")}
+                  readOnly
+                  placeholder="DD-MM-YYYY"
+                  className="h-9 pl-8 text-sm"
+                  disabled={isLoading}
+                />
+                <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                 <Input
                   type="date"
                   value={fechaHasta}
                   onChange={(e) => setFechaHasta(e.target.value)}
-                  className="h-9 pl-8 text-sm"
+                  className="absolute inset-0 h-9 w-full cursor-pointer opacity-0"
                   disabled={isLoading}
                 />
               </div>

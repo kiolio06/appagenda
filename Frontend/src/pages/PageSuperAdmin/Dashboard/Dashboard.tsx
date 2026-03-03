@@ -10,7 +10,7 @@ import { ClientIndicators } from "./client-indicators";
 import { Button } from "../../../components/ui/button";
 import { useAuth } from "../../../components/Auth/AuthContext";
 import { formatSedeNombre } from "../../../lib/sede";
-import { formatDateDMY } from "../../../lib/dateFormat";
+import { formatDateDMY, toLocalYMD } from "../../../lib/dateFormat";
 import {
   getDashboard,
   getVentasDashboard,
@@ -126,8 +126,8 @@ export default function DashboardPage() {
     last30Days.setDate(today.getDate() - 30);
     
     const defaultRange: DateRange = {
-      start_date: last30Days.toISOString().split('T')[0],
-      end_date: today.toISOString().split('T')[0]
+      start_date: toLocalYMD(last30Days),
+      end_date: toLocalYMD(today)
     };
     
     setDateRange(defaultRange);
@@ -188,7 +188,7 @@ export default function DashboardPage() {
       if (selectedSede !== "global") return;
 
       setError(null);
-      const ventasParams: any = { period: selectedPeriod };
+      const ventasParams: any = {};
       if (selectedPeriod === "custom") {
         if (!dateRange.start_date || !dateRange.end_date) {
           setError("Por favor selecciona un rango de fechas");
@@ -196,6 +196,14 @@ export default function DashboardPage() {
         }
         ventasParams.start_date = dateRange.start_date;
         ventasParams.end_date = dateRange.end_date;
+        ventasParams.period = "custom";
+      } else if (selectedPeriod === "today") {
+        const todayLocal = toLocalYMD(new Date());
+        ventasParams.period = "custom";
+        ventasParams.start_date = todayLocal;
+        ventasParams.end_date = todayLocal;
+      } else {
+        ventasParams.period = selectedPeriod;
       }
 
       let ventasResponse: VentasDashboardResponse | null = null;
@@ -209,10 +217,18 @@ export default function DashboardPage() {
       }
 
       try {
-        const analyticsParams: any = { period: selectedPeriod };
+        const analyticsParams: any = {};
         if (selectedPeriod === "custom") {
           analyticsParams.start_date = dateRange.start_date;
           analyticsParams.end_date = dateRange.end_date;
+          analyticsParams.period = "custom";
+        } else if (selectedPeriod === "today") {
+          const todayLocal = toLocalYMD(new Date());
+          analyticsParams.period = "custom";
+          analyticsParams.start_date = todayLocal;
+          analyticsParams.end_date = todayLocal;
+        } else {
+          analyticsParams.period = selectedPeriod;
         }
         analyticsResponse = await getDashboard(user!.access_token, analyticsParams);
         setGlobalData(analyticsResponse);
@@ -248,7 +264,6 @@ export default function DashboardPage() {
 
       // Configurar parámetros para la API
       const params: any = {
-        period: selectedPeriod,
         sede_id: selectedSede
       };
 
@@ -260,6 +275,14 @@ export default function DashboardPage() {
         }
         params.start_date = dateRange.start_date;
         params.end_date = dateRange.end_date;
+        params.period = "custom";
+      } else if (selectedPeriod === "today") {
+        const todayLocal = toLocalYMD(new Date());
+        params.period = "custom";
+        params.start_date = todayLocal;
+        params.end_date = todayLocal;
+      } else {
+        params.period = selectedPeriod;
       }
 
       // Primero intentar cargar datos de ventas
@@ -275,10 +298,23 @@ export default function DashboardPage() {
 
       // Luego intentar cargar datos de analytics
       try {
-        analyticsResponse = await getDashboard(user!.access_token, {
-          period: selectedPeriod,
+        const analyticsParams: any = {
           sede_id: selectedSede
-        });
+        };
+        if (selectedPeriod === "custom") {
+          analyticsParams.period = "custom";
+          analyticsParams.start_date = dateRange.start_date;
+          analyticsParams.end_date = dateRange.end_date;
+        } else if (selectedPeriod === "today") {
+          const todayLocal = toLocalYMD(new Date());
+          analyticsParams.period = "custom";
+          analyticsParams.start_date = todayLocal;
+          analyticsParams.end_date = todayLocal;
+        } else {
+          analyticsParams.period = selectedPeriod;
+        }
+
+        analyticsResponse = await getDashboard(user!.access_token, analyticsParams);
         console.log('Datos de analytics recibidos:', analyticsResponse);
       } catch (analyticsError: any) {
         console.warn('Error cargando datos de analytics:', analyticsError.message);
@@ -325,8 +361,8 @@ export default function DashboardPage() {
 
       const data = await getChurnClientes(user!.access_token, {
         sede_id: selectedSede,
-        start_date: thirtyDaysAgo.toISOString().split('T')[0],
-        end_date: today.toISOString().split('T')[0]
+        start_date: toLocalYMD(thirtyDaysAgo),
+        end_date: toLocalYMD(today)
       });
       setChurnData(data.clientes.slice(0, 10));
     } catch (error) {
@@ -407,8 +443,8 @@ export default function DashboardPage() {
     startDate.setDate(today.getDate() - days);
     
     const newRange: DateRange = {
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: today.toISOString().split('T')[0]
+      start_date: toLocalYMD(startDate),
+      end_date: toLocalYMD(today)
     };
     
     setTempDateRange(newRange);
@@ -839,7 +875,7 @@ export default function DashboardPage() {
   const DateRangeModal = () => {
     if (!showDateModal) return null;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalYMD(new Date());
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -894,8 +930,8 @@ export default function DashboardPage() {
                   const today = new Date();
                   const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
                   setTempDateRange({
-                    start_date: firstDayOfMonth.toISOString().split('T')[0],
-                    end_date: today.toISOString().split('T')[0]
+                    start_date: toLocalYMD(firstDayOfMonth),
+                    end_date: toLocalYMD(today)
                   });
                 }}
               >

@@ -15,6 +15,8 @@ interface Service {
     name: string;
     duration: number;
     price: number;
+    moneda?: string;
+    searchText: string;
 }
 
 interface EstilistaCompleto extends Estilista {
@@ -53,9 +55,13 @@ interface CitaParaPago {
     notas: string;
 }
 
-const START_HOUR = 5;
-const END_HOUR = 19;
 const SLOT_INTERVAL_MINUTES = 60;
+const normalizeServiceSearchText = (value: string): string =>
+    value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
 
 const AppointmentScheduler: React.FC<AppointmentSchedulerProps> = ({
     onClose,
@@ -71,7 +77,6 @@ const AppointmentScheduler: React.FC<AppointmentSchedulerProps> = ({
     const [selectedTime, setSelectedTime] = useState(normalizeAgendaTimeValue(horaSeleccionada || '10:00') || '10:00');
     const [selectedEndTime, setSelectedEndTime] = useState('11:00');
     const [isEndTimeManual, setIsEndTimeManual] = useState(false);
-    const [showTimeSelector, setShowTimeSelector] = useState(false);
     const [showMiniCalendar, setShowMiniCalendar] = useState(false);
     const [loading, ] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -87,6 +92,7 @@ const AppointmentScheduler: React.FC<AppointmentSchedulerProps> = ({
     const [selectedClient, setSelectedClient] = useState<Cliente | null>(null);
     const [notes, setNotes] = useState('');
     const [servicioActual, setServicioActual] = useState<Service | null>(null);
+    const [serviceSearchTerm, setServiceSearchTerm] = useState('');
     const [precioPersonalizado, setPrecioPersonalizado] = useState<string>('');
     const [usarPrecioCustom, setUsarPrecioCustom] = useState(false);
 
@@ -426,6 +432,8 @@ const handleContinuar = async () => {
         if (estilista) {
             setSelectedStylist(estilista);
             setServiciosSeleccionados([]);
+            setServicioActual(null);
+            setServiceSearchTerm('');
         }
     }, [estilistas]);
 
@@ -434,13 +442,11 @@ const handleContinuar = async () => {
             return [];
         }
 
-        const serviciosDisponibles = serviciosList.filter(servicio => {
+        const serviciosBloqueados = new Set((estilista.servicios_no_presta || []).map(String));
+        return serviciosList.filter((servicio) => {
             const servicioId = servicio.servicio_id || servicio._id;
-            const estaBloqueado = estilista.servicios_no_presta.includes(servicioId);
-            return !estaBloqueado;
+            return !serviciosBloqueados.has(servicioId);
         });
-
-        return serviciosDisponibles;
     }, []);
 
     const serviciosFiltrados = useMemo(() => {
@@ -457,10 +463,27 @@ const handleContinuar = async () => {
             name: s.nombre,
             duration: Number(s.duracion_minutos) || s.duracion || 30,
             price: s.precio_local !== undefined ? s.precio_local : s.precio ?? 0,
-            moneda: s.moneda_local || 'USD'
+            moneda: s.moneda_local || 'USD',
+            searchText: normalizeServiceSearchText(
+                `${s.nombre} ${Number(s.duracion_minutos) || s.duracion || 30} ${(s.moneda_local || 'USD')} ${s.precio_local !== undefined ? s.precio_local : s.precio ?? 0}`
+            )
         })),
         [serviciosFiltrados]
     );
+
+    const serviciosVisibles = useMemo(() => {
+        const query = normalizeServiceSearchText(serviceSearchTerm);
+        if (!query) return serviciosAMostrar;
+        return serviciosAMostrar.filter((service) => service.searchText.includes(query));
+    }, [serviciosAMostrar, serviceSearchTerm]);
+
+    const serviciosById = useMemo(() => {
+        const map = new Map<string, Service>();
+        serviciosAMostrar.forEach((service) => {
+            map.set(service.profesional_id, service);
+        });
+        return map;
+    }, [serviciosAMostrar]);
 
     const handleClientSelect = useCallback((cliente: Cliente) => {
         setSelectedClient(cliente);
@@ -468,14 +491,6 @@ const handleContinuar = async () => {
 
     const handleClientClear = useCallback(() => {
         setSelectedClient(null);
-    }, []);
-
-    const generateTimeSlots = useCallback(() => {
-        const slots = [];
-        for (let hour = START_HOUR; hour <= END_HOUR; hour += 1) {
-            slots.push(`${hour.toString().padStart(2, '0')}:00`);
-        }
-        return slots;
     }, []);
 
     const generateCalendarDays = useCallback(() => {
@@ -573,13 +588,7 @@ const handleContinuar = async () => {
         setShowMiniCalendar(false);
     }, []);
 
-    const handleTimeSelect = useCallback((time: string) => {
-        setSelectedTime(time);
-        setShowTimeSelector(false);
-    }, []);
-
     const handleCloseSelectors = useCallback(() => {
-        setShowTimeSelector(false);
         setShowMiniCalendar(false);
     }, []);
 
@@ -602,7 +611,6 @@ const handleContinuar = async () => {
 
     // 🔥 AGREGAR ESTOS useMemo QUE FALTAN (después de handleBackToEdit)
     const calendarDays = useMemo(() => generateCalendarDays(), [generateCalendarDays]);
-    const allTimeSlots = useMemo(() => generateTimeSlots(), [generateTimeSlots]);
     const dayHeaders = useMemo(() => ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'], []);
 
 
@@ -750,11 +758,20 @@ const handleContinuar = async () => {
                                 </div>
                             ) : (
                                 <>
+                                    <input
+                                        type="text"
+                                        value={serviceSearchTerm}
+                                        disabled={loadingServicios || serviciosAMostrar.length === 0}
+                                        onChange={(e) => setServiceSearchTerm(e.target.value)}
+                                        placeholder="Buscar servicio por nombre..."
+                                        className="mb-2 w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-gray-900 focus:border-gray-900 outline-none bg-white disabled:bg-gray-100"
+                                    />
+
                                     {/* Selector de servicio */}
                                     <select
                                         value={servicioActual?.profesional_id || ''}
                                         disabled={loadingServicios || serviciosAMostrar.length === 0}
-                                        onChange={(e) => setServicioActual(serviciosAMostrar.find(s => s.profesional_id === e.target.value) || null)}
+                                        onChange={(e) => setServicioActual(serviciosById.get(e.target.value) || null)}
                                         className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-gray-900 focus:border-gray-900 outline-none bg-white disabled:bg-gray-100"
                                     >
                                         <option value="">
@@ -762,10 +779,12 @@ const handleContinuar = async () => {
                                                 ? '🔄 Cargando...'
                                                 : serviciosAMostrar.length === 0
                                                     ? '❌ No hay servicios'
-                                                    : '💇‍♀️ Seleccionar servicio...'
+                                                    : serviciosVisibles.length === 0
+                                                        ? '🔎 Sin coincidencias'
+                                                        : '💇‍♀️ Seleccionar servicio...'
                                             }
                                         </option>
-                                        {serviciosAMostrar.map(service => (
+                                        {serviciosVisibles.map(service => (
                                             <option key={`service-${service.profesional_id}`} value={service.profesional_id}>
                                                 {service.name} - {service.duration}min - {currencySymbol} {service.price}
                                             </option>
@@ -840,7 +859,7 @@ const handleContinuar = async () => {
                                                         <button
                                                             onClick={() => handleEliminarServicio(servicio.servicio_id)}
                                                             className="p-1 hover:bg-red-50 rounded text-red-600"
-                                                            title="Eliminar"
+                                                            aria-label="Eliminar servicio"
                                                         >
                                                             <Trash2 className="w-3 h-3" />
                                                         </button>
@@ -912,32 +931,17 @@ const handleContinuar = async () => {
                                 </div>
 
                                 <div className="relative">
-                                    <button
-                                        onClick={() => setShowTimeSelector(!showTimeSelector)}
-                                        className="w-full flex items-center justify-between border border-gray-300 rounded px-2 py-1.5 hover:border-gray-900 bg-white text-xs"
-                                    >
-                                        <span className="flex items-center">{formatAgendaTime(selectedTime)}</span>
-                                    </button>
-
-                                    {showTimeSelector && (
-                                        <div className="absolute z-[9999] mt-1 w-full bg-white border border-gray-300 rounded shadow max-h-40 overflow-y-auto text-xs">
-                                            {allTimeSlots.map((time, i) => (
-                                                <button
-                                                        key={`time-slot-${time}-${i}`}
-                                                        onClick={() => handleTimeSelect(time)}
-                                                        className={`w-full text-left px-2 py-1.5 hover:bg-gray-100 border-b border-gray-100 last:border-b-0
-                                                        ${selectedTime === time ? 'bg-gray-900 text-white font-semibold' : 'text-gray-700'}`}
-                                                >
-                                                    <div className="flex items-center">
-                                                        {formatAgendaTime(time)}
-                                                        {selectedTime === time && (
-                                                            <span className="ml-auto">✓</span>
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <TimeInputWithPicker
+                                        value={selectedTime}
+                                        onChange={(e) => {
+                                            const nextValue = normalizeAgendaTimeValue(e.target.value);
+                                            if (!nextValue) return;
+                                            setSelectedTime(nextValue);
+                                        }}
+                                        step={60}
+                                        inputClassName="hide-native-time-indicator w-full border border-gray-300 rounded px-2 py-1.5 text-xs focus:ring-1 focus:ring-gray-900 focus:border-gray-900 outline-none bg-white"
+                                        buttonClassName="h-5 w-5"
+                                    />
                                 </div>
                             </div>
 
@@ -1000,7 +1004,7 @@ const handleContinuar = async () => {
                 </div>
 
                 {/* Overlay para cerrar selectores */}
-                {(showTimeSelector || showMiniCalendar) && (
+                {showMiniCalendar && (
                     <div
                         className="fixed inset-0 z-[9998]"
                         onClick={handleCloseSelectors}

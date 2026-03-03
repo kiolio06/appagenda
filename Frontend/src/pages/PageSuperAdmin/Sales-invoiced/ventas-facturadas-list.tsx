@@ -25,10 +25,19 @@ import {
   type PaymentMethodTotals,
 } from "../../../lib/payment-methods-summary"
 
+const toIsoLocalDate = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
 export function VentasFacturadasList() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedSede, setSelectedSede] = useState("")
   const [selectedEstado, setSelectedEstado] = useState("all")
+  const [fechaDesde] = useState(() => toIsoLocalDate(new Date()))
+  const [fechaHasta] = useState(() => toIsoLocalDate(new Date()))
   const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [facturas, setFacturas] = useState<Factura[]>([])
@@ -65,7 +74,7 @@ export function VentasFacturadasList() {
       setPagination(null)
       setPaymentSummary(null)
     }
-  }, [selectedSede, sedeIdMap, debouncedSearchTerm])
+  }, [selectedSede, sedeIdMap, debouncedSearchTerm, fechaDesde, fechaHasta])
 
   const cargarSedes = async () => {
     try {
@@ -87,8 +96,17 @@ export function VentasFacturadasList() {
       })
       setSedeIdMap(idMap)
 
-      // Mantener el selector sin sede por defecto al entrar.
-      setSelectedSede((actual) => (actual && idMap[actual] ? actual : ""))
+      // Seleccionar sede por defecto al entrar para cargar estadisticas de hoy.
+      setSelectedSede((actual) => {
+        if (actual && idMap[actual]) return actual
+
+        const sedeSesionId = sessionStorage.getItem("beaux-sede_id") || ""
+        const sedeSesion = sedesData.find((sede) => sede.sede_id === sedeSesionId)?._id || ""
+        if (sedeSesion && idMap[sedeSesion]) return sedeSesion
+
+        const primeraSedeId = sedesData[0]?._id || ""
+        return primeraSedeId && idMap[primeraSedeId] ? primeraSedeId : ""
+      })
     } catch (err) {
       console.error("Error cargando sedes:", err)
       setError("Error al cargar las sedes disponibles")
@@ -114,6 +132,8 @@ export function VentasFacturadasList() {
       const result = await facturaService.getVentasBySedePaginadas(sedeId, {
         page,
         limit,
+        fecha_desde: fechaDesde,
+        fecha_hasta: fechaHasta,
         search: debouncedSearchTerm || undefined,
       })
       

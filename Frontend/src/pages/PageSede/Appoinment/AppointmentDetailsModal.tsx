@@ -1613,7 +1613,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({
                     onClick={() => handleEliminarProducto(producto.producto_id)}
                     disabled={isServiceActionsDisabled}
                     className="p-1 text-gray-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Eliminar producto"
+                    aria-label="Eliminar producto"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -1699,7 +1699,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({
                     onClick={() => handleEliminarServicio(servicio.servicio_id)}
                     disabled={isServiceActionsDisabled}
                     className="p-1 text-gray-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Eliminar servicio"
+                    aria-label="Eliminar servicio"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

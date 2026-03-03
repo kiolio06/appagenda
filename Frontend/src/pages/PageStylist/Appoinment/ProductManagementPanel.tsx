@@ -421,7 +421,7 @@ export function ProductManagementPanel({
                                                 className="h-8 px-2 text-gray-700 hover:text-gray-800 hover:bg-gray-100 border border-gray-200"
                                                 onClick={() => handleDeleteProduct(productId)}
                                                 disabled={disabled || isDeleting === productId}
-                                                title="Eliminar producto"
+                                                aria-label="Eliminar producto"
                                             >
                                                 {isDeleting === productId ? (
                                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
