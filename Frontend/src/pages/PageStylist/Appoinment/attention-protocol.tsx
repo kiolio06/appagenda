@@ -1531,7 +1531,7 @@ export function AttentionProtocol({
             <button
               onClick={() => abrirModalBloqueos()}
               className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-xs"
-              title="Crear bloqueo de horario"
+              aria-label="Crear bloqueo de horario"
             >
               <Ban className="w-3 h-3" /> {/* REDUCIDO de w-4 h-4 */}
               <span className="font-medium">Bloquear horario</span>
@@ -1599,7 +1599,7 @@ export function AttentionProtocol({
                     : 'hover:bg-gray-100 border-gray-200'
                   }
       `}
-                title={`Click normal: ver citas\nCtrl+Click: crear bloqueo\nClick derecho: opciones`}
+                aria-label={`Seleccionar día ${dia}`}
               >
                 <span className={esHoy ? 'font-bold' : ''}>{dia}</span>
               </button>

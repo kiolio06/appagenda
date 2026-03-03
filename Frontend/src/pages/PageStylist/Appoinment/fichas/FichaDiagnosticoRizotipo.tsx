@@ -834,3 +834,4 @@ export function FichaDiagnosticoRizotipo({ cita, datosIniciales, onGuardar, onSu
     </form>
   );
 }
+
