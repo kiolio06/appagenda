@@ -75,6 +75,7 @@ export function AttentionProtocol({
   onVolver,
   usuarioRol = "estilista",
 }: AttentionProtocolProps) {
+  const primaryActionButtonClass = "bg-black text-white hover:bg-gray-800 disabled:bg-gray-400 disabled:text-white"
   const [tipoFichaSeleccionada, setTipoFichaSeleccionada] = useState<TipoFicha | null>(null)
   const [vistaActual, setVistaActual] = useState<VistaPrincipal>("calendario")
   const [mesActual, setMesActual] = useState<Date>(new Date())
@@ -259,12 +260,57 @@ export function AttentionProtocol({
     }
   }
 
+  const getCitaId = (cita?: any): string => {
+    const rawId = cita?.cita_id || cita?._id || "";
+    return typeof rawId === "string" ? rawId : String(rawId || "");
+  };
+
+  const scrollBottomSheetToTop = () => {
+    const scrollContainer = document.querySelector("[data-bottom-sheet-scroll]");
+    if (scrollContainer instanceof HTMLElement) {
+      scrollContainer.scrollTo({ top: 0, behavior: "auto" });
+    }
+  };
+
+  const extractBackendErrorMessage = async (response: Response): Promise<string> => {
+    const contentType = response.headers.get("content-type") || "";
+
+    try {
+      if (contentType.includes("application/json")) {
+        const payload = await response.json();
+        if (typeof payload?.detail === "string") return payload.detail;
+        if (typeof payload?.message === "string") return payload.message;
+      } else {
+        const text = (await response.text()).trim();
+        if (text) {
+          try {
+            const parsed = JSON.parse(text);
+            if (typeof parsed?.detail === "string") return parsed.detail;
+            if (typeof parsed?.message === "string") return parsed.message;
+          } catch {
+            return text;
+          }
+          return text;
+        }
+      }
+    } catch (error) {
+      console.warn("No se pudo parsear el error del backend:", error);
+    }
+
+    return response.statusText || "Error desconocido";
+  };
+
+  useEffect(() => {
+    scrollBottomSheetToTop();
+  }, [vistaActual, tipoFichaSeleccionada, mostrarConfirmacionFinalizar, detalleFicha]);
+
   // FUNCIÓN SIMPLIFICADA: SIEMPRE puede finalizar si está pendiente/confirmada
   const puedeMostrarFinalizar = (cita: any): boolean => {
-    console.log('🔍 Verificando si puede mostrar botón finalizar para cita:', cita?.cita_id);
+    const citaId = getCitaId(cita);
+    console.log('🔍 Verificando si puede mostrar botón finalizar para cita:', citaId);
 
     // Verificar si la cita existe
-    if (!cita || !cita.cita_id) {
+    if (!cita || !citaId) {
       console.log('❌ No hay cita válida');
       return false;
     }
@@ -299,17 +345,23 @@ export function AttentionProtocol({
   // Función para obtener el color según el tipo de ficha
   const getColorPorTipoFicha = (tipo: TipoFicha) => {
     switch (tipo) {
-      case "DIAGNOSTICO_RIZOTIPO": return "bg-purple-100 text-purple-800 border-purple-200";
-      case "COLOR": return "bg-pink-100 text-pink-800 border-pink-200";
-      case "ASESORIA_CORTE": return "bg-blue-100 text-blue-800 border-blue-200";
-      case "CUIDADO_POST_COLOR": return "bg-orange-100 text-orange-800 border-orange-200";
-      case "VALORACION_PRUEBA_COLOR": return "bg-green-100 text-green-800 border-green-200";
+      case "DIAGNOSTICO_RIZOTIPO": return "bg-gray-100 text-gray-800 border-gray-200";
+      case "COLOR": return "bg-gray-100 text-gray-800 border-gray-200";
+      case "ASESORIA_CORTE": return "bg-gray-100 text-gray-800 border-gray-200";
+      case "CUIDADO_POST_COLOR": return "bg-gray-100 text-gray-800 border-gray-200";
+      case "VALORACION_PRUEBA_COLOR": return "bg-gray-100 text-gray-800 border-gray-200";
       default: return "bg-gray-100 text-gray-800 border-gray-200";
     }
   }
 
   // FUNCIÓN MEJORADA PARA FINALIZAR SERVICIO (ENDPOINT PUT)
-  const finalizarServicioAPI = async (citaId: string) => {
+  const finalizarServicioAPI = async (rawCitaId?: string) => {
+    const citaId = (rawCitaId || getCitaId(citaSeleccionada)).trim();
+    if (!citaId) {
+      alert("No se pudo identificar la cita a finalizar.");
+      return;
+    }
+
     setLoadingFinalizar(true);
     try {
       const token = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
@@ -319,9 +371,10 @@ export function AttentionProtocol({
       }
 
       console.log(`👤 Rol del usuario: ${usuarioRol}`);
+      let seGeneroPdf = true;
 
       // Usar el endpoint PUT /scheduling/quotes/citas/{cita_id}/finalizar
-      const response = await fetch(`${API_BASE_URL}scheduling/quotes/citas/${citaId}/finalizar`, {
+      let response = await fetch(`${API_BASE_URL}scheduling/quotes/citas/${citaId}/finalizar`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -333,17 +386,39 @@ export function AttentionProtocol({
       console.log('Response status:', response.status);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Error response:', errorText);
-        throw new Error(`Error ${response.status}: ${errorText || response.statusText}`);
+        const errorMessage = await extractBackendErrorMessage(response);
+        const requiereFallbackCompletar =
+          response.status === 404 &&
+          errorMessage.toLowerCase().includes("ficha");
+
+        if (!requiereFallbackCompletar) {
+          throw new Error(`Error ${response.status}: ${errorMessage}`);
+        }
+
+        console.warn("Finalización con PDF no disponible, usando fallback de completar cita:", errorMessage);
+        seGeneroPdf = false;
+
+        response = await fetch(`${API_BASE_URL}scheduling/quotes/${citaId}/completar`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          const fallbackError = await extractBackendErrorMessage(response);
+          throw new Error(`Error ${response.status}: ${fallbackError}`);
+        }
       }
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       console.log('✅ Servicio finalizado:', data);
 
       // Actualizar estado local de la cita
       if (citaSeleccionada) {
-        citaSeleccionada.estado = "finalizado";
+        citaSeleccionada.estado = seGeneroPdf ? "finalizado" : "completada";
       }
 
       // Limpiar fichas guardadas de esta cita
@@ -364,15 +439,20 @@ export function AttentionProtocol({
 
       // Mostrar mensaje según rol
       const mensaje = usuarioRol === "estilista"
-        ? "✅ Servicio finalizado como estilista. El admin puede proceder con la facturación."
-        : "✅ Servicio finalizado por administración.";
+        ? seGeneroPdf
+          ? "✅ Servicio finalizado como estilista. El admin puede proceder con la facturación."
+          : "✅ Servicio finalizado sin ficha técnica asociada. La cita quedó completada."
+        : seGeneroPdf
+          ? "✅ Servicio finalizado por administración."
+          : "✅ Servicio finalizado sin ficha técnica asociada.";
 
       alert(mensaje);
 
-      // Recargar después de 2 segundos
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
+      if (!onFinalizarServicio) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      }
 
     } catch (error) {
       console.error('❌ Error al finalizar servicio:', error);
@@ -383,7 +463,7 @@ export function AttentionProtocol({
   };
 
   const getEstadoCita = (cita: any) => {
-    console.log(`🔄 Calculando estado para cita ${cita.cita_id}:`, {
+    console.log(`🔄 Calculando estado para cita ${getCitaId(cita)}:`, {
       estado: cita.estado,
       estado_pago: cita.estado_pago,
       fecha: cita.fecha,
@@ -398,7 +478,7 @@ export function AttentionProtocol({
       if (estadoPagoNormalizado === "pagado" || estadoPagoNormalizado === "pagada") {
         return {
           estado: "Pagada",
-          color: "bg-green-100 text-green-800 border-green-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <CheckCircle className="w-4 h-4" />
         };
       }
@@ -412,47 +492,47 @@ export function AttentionProtocol({
       const estadosMap: Record<string, any> = {
         "pendiente": {
           estado: "Pendiente",
-          color: "bg-blue-100 text-blue-800 border-blue-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4" />
         },
         "reservada": {
           estado: "Pendiente",
-          color: "bg-blue-100 text-blue-800 border-blue-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4" />
         },
         "confirmada": {
           estado: "Pendiente",
-          color: "bg-blue-100 text-blue-800 border-blue-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4" />
         },
         "reservada/pendiente": {
           estado: "Pendiente",
-          color: "bg-blue-100 text-blue-800 border-blue-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4" />
         },
         "en proceso": {
           estado: "En Proceso",
-          color: "bg-yellow-100 text-yellow-800 border-yellow-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4 animate-pulse" />
         },
         "en_proceso": {
           estado: "En Proceso",
-          color: "bg-yellow-100 text-yellow-800 border-yellow-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4 animate-pulse" />
         },
         "en curso": {
           estado: "En Proceso",
-          color: "bg-yellow-100 text-yellow-800 border-yellow-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4 animate-pulse" />
         },
         "cancelada": {
           estado: "Cancelada",
-          color: "bg-red-100 text-red-800 border-red-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <AlertCircle className="w-4 h-4" />
         },
         "cancelado": {
           estado: "Cancelada",
-          color: "bg-red-100 text-red-800 border-red-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <AlertCircle className="w-4 h-4" />
         },
         "no asistio": {
@@ -467,32 +547,32 @@ export function AttentionProtocol({
         },
         "finalizada": {
           estado: "Finalizada",
-          color: "bg-green-100 text-green-800 border-green-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <CheckCircle className="w-4 h-4" />
         },
         "finalizado": {
           estado: "Finalizada",
-          color: "bg-green-100 text-green-800 border-green-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <CheckCircle className="w-4 h-4" />
         },
         "completada": {
           estado: "Finalizada",
-          color: "bg-green-100 text-green-800 border-green-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <CheckCircle className="w-4 h-4" />
         },
         "completado": {
           estado: "Finalizada",
-          color: "bg-green-100 text-green-800 border-green-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <CheckCircle className="w-4 h-4" />
         },
         "pagada": {
           estado: "Pagada",
-          color: "bg-green-100 text-green-800 border-green-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <CheckCircle className="w-4 h-4" />
         },
         "pagado": {
           estado: "Pagada",
-          color: "bg-green-100 text-green-800 border-green-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <CheckCircle className="w-4 h-4" />
         }
       };
@@ -526,14 +606,14 @@ export function AttentionProtocol({
         console.log(`✓ Cita futura -> Pendiente`);
         return {
           estado: "Pendiente",
-          color: "bg-blue-100 text-blue-800 border-blue-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4" />
         };
       } else if (ahora >= inicioCita && ahora <= finCita) {
         console.log(`✓ Cita en horario -> En Proceso`);
         return {
           estado: "En Proceso",
-          color: "bg-yellow-100 text-yellow-800 border-yellow-200",
+          color: "bg-gray-100 text-gray-800 border-gray-200",
           icon: <Clock className="w-4 h-4 animate-pulse" />
         };
       } else {
@@ -548,7 +628,7 @@ export function AttentionProtocol({
       console.error(`❌ Error calculando horario:`, error);
       return {
         estado: "Pendiente",
-        color: "bg-blue-100 text-blue-800 border-blue-200",
+        color: "bg-gray-100 text-gray-800 border-gray-200",
         icon: <Clock className="w-4 h-4" />
       };
     }
@@ -772,7 +852,7 @@ export function AttentionProtocol({
           </div>
 
           {/* Resumen destacado */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded p-3 mb-4"> {/* REDUCIDO de p-4 mb-6 */}
+          <div className="bg-gradient-to-r from-gray-50 to-gray-50 border border-gray-200 rounded p-3 mb-4"> {/* REDUCIDO de p-4 mb-6 */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3"> {/* REDUCIDO de gap-4 */}
               <div className="text-center">
                 <div className="text-xs text-gray-600 mb-1">Servicio</div> {/* REDUCIDO de text-sm */}
@@ -788,7 +868,7 @@ export function AttentionProtocol({
               </div>
               <div className="text-center">
                 <div className="text-xs text-gray-600 mb-1">Precio</div> {/* REDUCIDO de text-sm */}
-                <div className="font-semibold text-sm text-green-600">{precioFormateado}</div>
+                <div className="font-semibold text-sm text-gray-600">{precioFormateado}</div>
               </div>
             </div>
           </div>
@@ -815,9 +895,9 @@ export function AttentionProtocol({
                 <p className="text-xs">
                   <strong>Autorización publicación:</strong>{' '}
                   {autorizacionPublicacion ? (
-                    <span className="text-green-600 font-medium">✅ Autorizado</span>
+                    <span className="text-gray-600 font-medium">✅ Autorizado</span>
                   ) : (
-                    <span className="text-red-600 font-medium">❌ No autorizado</span>
+                    <span className="text-gray-600 font-medium">❌ No autorizado</span>
                   )}
                 </p>
               )}
@@ -842,7 +922,7 @@ export function AttentionProtocol({
                     {/* Header del modal */}
                     <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-gray-50 to-white"> {/* REDUCIDO de p-6 */}
                       <div className="flex items-center gap-2">
-                        <Camera className="h-5 w-5 text-blue-600" />
+                        <Camera className="h-5 w-5 text-gray-600" />
                         <div>
                           <h2 className="text-base font-bold text-gray-900">
                             {imagenAmpliada.tipo === 'antes' ? '📸 Imagen ANTES' : '✨ Imagen DESPUÉS'}
@@ -908,7 +988,7 @@ export function AttentionProtocol({
                     <div className="p-3 bg-gray-50 border-t"> {/* REDUCIDO de p-4 */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1"> {/* REDUCIDO de gap-2 */}
-                          <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${imagenAmpliada.tipo === 'antes' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-green-100 text-green-800 border border-green-200'}`}>
+                          <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${imagenAmpliada.tipo === 'antes' ? 'bg-gray-100 text-gray-800 border border-gray-200' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
                             {imagenAmpliada.tipo === 'antes' ? 'ANTES' : 'DESPUÉS'}
                           </div>
                           <span className="text-xs text-gray-600">
@@ -933,7 +1013,7 @@ export function AttentionProtocol({
                     {/* Columna ANTES */}
                     <div className="space-y-3"> {/* REDUCIDO de space-y-4 */}
                       <div className="flex items-center justify-between">
-                        <h5 className="font-medium text-blue-700 text-base flex items-center gap-1"> {/* REDUCIDO de text-lg gap-2 */}
+                        <h5 className="font-medium text-gray-700 text-base flex items-center gap-1"> {/* REDUCIDO de text-lg gap-2 */}
                           Estado Inicial (Antes)
                         </h5>
                       </div>
@@ -941,7 +1021,7 @@ export function AttentionProtocol({
                       {/* Contenedor principal de la imagen ANTES */}
                       <div className="relative group">
                         <div
-                          className="border-2 border-blue-300 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer bg-gradient-to-br from-blue-50 to-white"
+                          className="border-2 border-gray-300 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer bg-gradient-to-br from-gray-50 to-white"
                           onClick={() => setImagenAmpliada({
                             url: fotosAntes[0],
                             alt: 'Estado inicial - ANTES',
@@ -962,12 +1042,12 @@ export function AttentionProtocol({
 
                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                               <div className="bg-white/90 backdrop-blur-sm p-2 rounded-full shadow-lg transform -translate-y-2 group-hover:translate-y-0 transition-transform duration-300"> {/* REDUCIDO de p-4 -translate-y-4 */}
-                                <ZoomIn className="h-6 w-6 text-blue-600" />
+                                <ZoomIn className="h-6 w-6 text-gray-600" />
                               </div>
                             </div>
 
                             <div className="absolute top-2 left-2">
-                              <span className="bg-blue-600 text-white px-2 py-1 rounded-full text-xs font-bold shadow">
+                              <span className="bg-gray-600 text-white px-2 py-1 rounded-full text-xs font-bold shadow">
                                 ANTES
                               </span>
                             </div>
@@ -975,7 +1055,7 @@ export function AttentionProtocol({
                             {/* Indicador si hay más fotos */}
                             {fotosAntes.length > 1 && (
                               <div className="absolute top-2 right-2"> {/* REDUCIDO de top-4 right-4 */}
-                                <span className="bg-blue-800/90 text-white px-1.5 py-0.5 rounded-full text-xs font-semibold backdrop-blur-sm"> {/* REDUCIDO de px-3 py-1.5 */}
+                                <span className="bg-gray-800/90 text-white px-1.5 py-0.5 rounded-full text-xs font-semibold backdrop-blur-sm"> {/* REDUCIDO de px-3 py-1.5 */}
                                   +{fotosAntes.length - 1} más
                                 </span>
                               </div>
@@ -983,7 +1063,7 @@ export function AttentionProtocol({
                           </div>
 
                           {/* Información debajo de la imagen */}
-                          <div className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 border-t border-blue-200"> {/* REDUCIDO de p-5 */}
+                          <div className="p-3 bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200"> {/* REDUCIDO de p-5 */}
                             <p className="text-sm text-gray-800 font-medium text-center"> {/* REDUCIDO de text-base */}
                               Estado del cabello antes del servicio
                             </p>
@@ -1000,7 +1080,7 @@ export function AttentionProtocol({
                             {fotosAntes.slice(1).map((url, idx) => (
                               <div
                                 key={`antes-thumb-${idx}`}
-                                className="flex-shrink-0 w-16 h-12 rounded overflow-hidden border border-blue-200 cursor-pointer hover:border-blue-400 transition-colors"
+                                className="flex-shrink-0 w-16 h-12 rounded overflow-hidden border border-gray-200 cursor-pointer hover:border-gray-400 transition-colors"
                                 onClick={() => setImagenAmpliada({
                                   url,
                                   alt: `Antes ${idx + 2}`,
@@ -1024,7 +1104,7 @@ export function AttentionProtocol({
                     {/* Columna DESPUÉS */}
                     <div className="space-y-3"> {/* REDUCIDO de space-y-4 */}
                       <div className="flex items-center justify-between">
-                        <h5 className="font-medium text-green-700 text-base flex items-center gap-1"> {/* REDUCIDO de text-lg gap-2 */}
+                        <h5 className="font-medium text-gray-700 text-base flex items-center gap-1"> {/* REDUCIDO de text-lg gap-2 */}
                           Resultado Final (Después)
                         </h5>
 
@@ -1032,7 +1112,7 @@ export function AttentionProtocol({
 
                       <div className="relative group">
                         <div
-                          className="border-2 border-green-300 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer bg-gradient-to-br from-green-50 to-white"
+                          className="border-2 border-gray-300 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer bg-gradient-to-br from-gray-50 to-white"
                           onClick={() => setImagenAmpliada({
                             url: fotosDespues[0],
                             alt: 'Resultado final - DESPUÉS',
@@ -1054,19 +1134,19 @@ export function AttentionProtocol({
 
                             <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                               <div className="bg-white/90 backdrop-blur-sm p-2 rounded-full shadow-lg transform -translate-y-2 group-hover:translate-y-0 transition-transform duration-300">
-                                <ZoomIn className="h-6 w-6 text-green-600" />
+                                <ZoomIn className="h-6 w-6 text-gray-600" />
                               </div>
                             </div>
 
                             <div className="absolute top-2 left-2">
-                              <span className="bg-green-600 text-white px-2 py-1 rounded-full text-xs font-bold shadow">
+                              <span className="bg-gray-600 text-white px-2 py-1 rounded-full text-xs font-bold shadow">
                                 DESPUES
                               </span>
                             </div>
 
                             {fotosDespues.length > 1 && (
                               <div className="absolute top-2 right-2">
-                                <span className="bg-green-800/90 text-white px-1.5 py-0.5 rounded-full text-xs font-semibold backdrop-blur-sm"> {/* REDUCIDO de px-3 py-1.5 */}
+                                <span className="bg-gray-800/90 text-white px-1.5 py-0.5 rounded-full text-xs font-semibold backdrop-blur-sm"> {/* REDUCIDO de px-3 py-1.5 */}
                                   +{fotosDespues.length - 1} más
                                 </span>
                               </div>
@@ -1074,7 +1154,7 @@ export function AttentionProtocol({
                           </div>
 
                           {/* Información debajo de la imagen */}
-                          <div className="p-3 bg-gradient-to-r from-green-50 to-green-100 border-t border-green-200"> {/* REDUCIDO de p-5 */}
+                          <div className="p-3 bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200"> {/* REDUCIDO de p-5 */}
                             <p className="text-sm text-gray-800 font-medium text-center"> {/* REDUCIDO de text-base */}
                               Resultado después del servicio
                             </p>
@@ -1091,7 +1171,7 @@ export function AttentionProtocol({
                             {fotosDespues.slice(1).map((url, idx) => (
                               <div
                                 key={`despues-thumb-${idx}`}
-                                className="flex-shrink-0 w-16 h-12 rounded overflow-hidden border border-green-200 cursor-pointer hover:border-green-400 transition-colors"
+                                className="flex-shrink-0 w-16 h-12 rounded overflow-hidden border border-gray-200 cursor-pointer hover:border-gray-400 transition-colors"
                                 onClick={() => setImagenAmpliada({
                                   url,
                                   alt: `Después ${idx + 2}`,
@@ -1156,7 +1236,7 @@ export function AttentionProtocol({
             <h3 className="font-semibold text-base mb-2 flex items-center gap-1"> {/* REDUCIDO de text-lg mb-3 gap-2 */}
               <span>💬</span> Comentario Interno
             </h3>
-            <div className="bg-yellow-50 border border-yellow-200 p-3 rounded"> {/* REDUCIDO de p-4 */}
+            <div className="bg-gray-50 border border-gray-200 p-3 rounded"> {/* REDUCIDO de p-4 */}
               <p className="text-sm text-gray-700">{comentarioInterno}</p> {/* REDUCIDO de text-gray-700 */}
             </div>
           </div>
@@ -1326,13 +1406,13 @@ export function AttentionProtocol({
         </div>
 
         {fichasCitaActual.length > 0 && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded"> {/* REDUCIDO de mb-6 p-4 rounded-lg */}
-            <h4 className="font-semibold text-blue-800 mb-1 text-sm">Fichas en progreso ({fichasCitaActual.length})</h4> {/* REDUCIDO de mb-2 */}
+          <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded"> {/* REDUCIDO de mb-6 p-4 rounded-lg */}
+            <h4 className="font-semibold text-gray-800 mb-1 text-sm">Fichas en progreso ({fichasCitaActual.length})</h4> {/* REDUCIDO de mb-2 */}
             <div className="space-y-1"> {/* REDUCIDO de space-y-2 */}
               {fichasCitaActual.map((ficha, index) => (
                 <div key={index} className="flex items-center justify-between p-2 bg-white rounded border"> {/* REDUCIDO de p-3 */}
                   <div className="flex items-center">
-                    <FileText className="w-4 h-4 text-blue-600 mr-2" /> {/* REDUCIDO de w-5 h-5 mr-3 */}
+                    <FileText className="w-4 h-4 text-gray-600 mr-2" /> {/* REDUCIDO de w-5 h-5 mr-3 */}
                     <div>
                       <p className="font-medium text-sm">{getNombreTipoFicha(ficha.tipo)}</p> {/* REDUCIDO texto */}
                       <p className="text-xs text-gray-500"> {/* REDUCIDO de text-sm */}
@@ -1360,31 +1440,31 @@ export function AttentionProtocol({
               tipo: "DIAGNOSTICO_RIZOTIPO" as TipoFicha,
               titulo: "Diagnóstico Rizotipo",
               descripcion: "Análisis del tipo de cabello y diagnóstico completo",
-              color: "bg-purple-50 border-purple-200 text-purple-800 hover:bg-purple-100"
+              color: "bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100"
             },
             {
               tipo: "COLOR" as TipoFicha,
               titulo: "Ficha Color",
               descripcion: "Registro de fórmulas y procesos de coloración",
-              color: "bg-pink-50 border-pink-200 text-pink-800 hover:bg-pink-100"
+              color: "bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100"
             },
             {
               tipo: "ASESORIA_CORTE" as TipoFicha,
               titulo: "Asesoría de Corte",
               descripcion: "Recomendaciones y plan de corte personalizado",
-              color: "bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100"
+              color: "bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100"
             },
             {
               tipo: "CUIDADO_POST_COLOR" as TipoFicha,
               titulo: "Cuidado Post Color",
               descripcion: "Recomendaciones para mantenimiento después del color",
-              color: "bg-orange-50 border-orange-200 text-orange-800 hover:bg-orange-100"
+              color: "bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100"
             },
             {
               tipo: "VALORACION_PRUEBA_COLOR" as TipoFicha,
               titulo: "Valoración Prueba Color",
               descripcion: "Evaluación de pruebas de color y resultados",
-              color: "bg-green-50 border-green-200 text-green-800 hover:bg-green-100"
+              color: "bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100"
             }
           ].map((ficha) => (
             <button
@@ -1501,7 +1581,6 @@ export function AttentionProtocol({
             console.log('Total productos actualizado:', total);
             setTotalProductos(total);
           }}
-          moneda="USD"
           disabled={false}
         />
 
@@ -1530,8 +1609,8 @@ export function AttentionProtocol({
             </div>
             <button
               onClick={() => abrirModalBloqueos()}
-              className="flex items-center gap-1 px-3 py-1.5 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors text-xs"
-              title="Crear bloqueo de horario"
+              className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-xs"
+              aria-label="Crear bloqueo de horario"
             >
               <Ban className="w-3 h-3" /> {/* REDUCIDO de w-4 h-4 */}
               <span className="font-medium">Bloquear horario</span>
@@ -1595,11 +1674,11 @@ export function AttentionProtocol({
                 className={`
         h-10 flex items-center justify-center rounded border text-xs
         ${esHoy
-                    ? 'bg-blue-100 border-blue-300 text-blue-700'
+                    ? 'bg-gray-100 border-gray-300 text-gray-700'
                     : 'hover:bg-gray-100 border-gray-200'
                   }
       `}
-                title={`Click normal: ver citas\nCtrl+Click: crear bloqueo\nClick derecho: opciones`}
+                aria-label={`Seleccionar día ${dia}`}
               >
                 <span className={esHoy ? 'font-bold' : ''}>{dia}</span>
               </button>
@@ -1666,11 +1745,11 @@ export function AttentionProtocol({
         </div>
 
         {fichasCitaActual.length > 0 && (
-          <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
+          <div className="mb-3 p-2 bg-gray-50 border border-gray-200 rounded">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <Save className="w-3 h-3 text-blue-600 mr-1" />
-                <span className="text-xs font-medium text-blue-800">
+                <Save className="w-3 h-3 text-gray-600 mr-1" />
+                <span className="text-xs font-medium text-gray-800">
                   Tienes {fichasCitaActual.length} ficha(s) pendiente(s)
                 </span>
               </div>
@@ -1688,11 +1767,11 @@ export function AttentionProtocol({
 
         {/* Contador de fichas existentes */}
         {fichasCliente.length > 0 && (
-          <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded">
+          <div className="mb-3 p-2 bg-gray-50 border border-gray-200 rounded">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <Eye className="w-3 h-3 text-purple-600 mr-1" />
-                <span className="text-xs font-medium text-purple-800">
+                <Eye className="w-3 h-3 text-gray-600 mr-1" />
+                <span className="text-xs font-medium text-gray-800">
                   Tienes {fichasCliente.length} ficha(s) creada(s) para este cliente
                 </span>
               </div>
@@ -1710,11 +1789,11 @@ export function AttentionProtocol({
 
         {/* Contador de productos existentes en la cita */}
         {tieneProductos && (
-          <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded">
+          <div className="mb-3 p-2 bg-gray-50 border border-gray-200 rounded">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
-                <ShoppingCart className="w-3 h-3 text-green-600 mr-1" />
-                <span className="text-xs font-medium text-green-800">
+                <ShoppingCart className="w-3 h-3 text-gray-600 mr-1" />
+                <span className="text-xs font-medium text-gray-800">
                   {productosCita.length} producto(s) en la cita - Total: ${totalProductosCalculado.toLocaleString()}
                 </span>
               </div>
@@ -1734,7 +1813,7 @@ export function AttentionProtocol({
               {productosCita.slice(0, 3).map((producto: any, index: number) => (
                 <div key={index} className="flex items-center justify-between text-xs">
                   <span className="truncate flex-1 mr-2">{producto.nombre}</span>
-                  <span className="font-medium text-green-700 whitespace-nowrap">
+                  <span className="font-medium text-gray-700 whitespace-nowrap">
                     {producto.cantidad || 1}x ${(producto.precio_unitario || 0).toLocaleString()}
                   </span>
                 </div>
@@ -1752,37 +1831,37 @@ export function AttentionProtocol({
           <h3 className="mb-3 font-semibold text-sm">¿Qué deseas hacer?</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
-              className="p-4 rounded border-2 border-blue-200 bg-blue-50 text-left transition-all hover:shadow hover:border-blue-300"
+              className="p-4 rounded border-2 border-gray-200 bg-gray-50 text-left transition-all hover:shadow hover:border-gray-300"
               onClick={() => setVistaActual("fichas")}
             >
               <div className="flex items-center mb-2">
-                <FileText className="w-6 h-6 text-blue-600 mr-2" />
-                <h4 className="font-semibold text-blue-800 text-base">Gestionar Fichas</h4>
+                <FileText className="w-6 h-6 text-gray-600 mr-2" />
+                <h4 className="font-semibold text-gray-800 text-base">Gestionar Fichas</h4>
               </div>
-              <p className="text-xs text-blue-600">
+              <p className="text-xs text-gray-600">
                 Crear y gestionar fichas técnicas de diagnóstico y tratamiento
               </p>
             </button>
 
             <button
-              className="p-4 rounded border-2 border-green-200 bg-green-50 text-left transition-all hover:shadow hover:border-green-300"
+              className="p-4 rounded border-2 border-gray-200 bg-gray-50 text-left transition-all hover:shadow hover:border-gray-300"
               onClick={() => setVistaActual("productos")}
             >
               <div className="flex items-center mb-2">
-                <ShoppingCart className="w-6 h-6 text-green-600 mr-2" />
-                <h4 className="font-semibold text-green-800 text-base">Gestionar Productos</h4>
+                <ShoppingCart className="w-6 h-6 text-gray-600 mr-2" />
+                <h4 className="font-semibold text-gray-800 text-base">Gestionar Productos</h4>
               </div>
-              <p className="text-xs text-green-600">
+              <p className="text-xs text-gray-600">
                 Seleccionar productos y gestionar inventario del servicio
               </p>
               {tieneProductos && (
-                <div className="mt-2 inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                <div className="mt-2 inline-flex items-center px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
                   <ShoppingCart className="w-3 h-3 mr-1" />
                   {productosCita.length} producto(s) - ${totalProductosCalculado.toLocaleString()}
                 </div>
               )}
               {!tieneProductos && totalProductos > 0 && (
-                <div className="mt-2 inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                <div className="mt-2 inline-flex items-center px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
                   <ShoppingCart className="w-3 h-3 mr-1" />
                   ${totalProductos.toLocaleString()} en productos
                 </div>
@@ -1790,14 +1869,14 @@ export function AttentionProtocol({
             </button>
 
             <button
-              className="p-4 rounded border-2 border-purple-200 bg-purple-50 text-left transition-all hover:shadow hover:border-purple-300"
+              className="p-4 rounded border-2 border-gray-200 bg-gray-50 text-left transition-all hover:shadow hover:border-gray-300"
               onClick={() => setVistaActual("ver-fichas")}
             >
               <div className="flex items-center mb-2">
-                <Eye className="w-6 h-6 text-purple-600 mr-2" />
-                <h4 className="font-semibold text-purple-800 text-base">Ver Fichas Existentes</h4>
+                <Eye className="w-6 h-6 text-gray-600 mr-2" />
+                <h4 className="font-semibold text-gray-800 text-base">Ver Fichas Existentes</h4>
               </div>
-              <p className="text-xs text-purple-600">
+              <p className="text-xs text-gray-600">
                 Consultar fichas técnicas creadas anteriormente para este cliente
               </p>
             </button>
@@ -1820,14 +1899,7 @@ export function AttentionProtocol({
           {citaSeleccionada && puedeMostrarFinalizar(citaSeleccionada) && (
             <Button
               size="sm"
-              className={`
-              flex-1 text-xs
-              ${usuarioRol === "estilista"
-                  ? "bg-amber-600 hover:bg-amber-700"
-                  : "bg-green-600 hover:bg-green-700"
-                }
-              shadow
-            `}
+              className={`flex-1 text-xs shadow ${primaryActionButtonClass}`}
               onClick={() => setMostrarConfirmacionFinalizar(true)}
               disabled={loadingFinalizar}
             >
@@ -1857,7 +1929,7 @@ export function AttentionProtocol({
           {/* INDICADOR SI YA ESTÁ FINALIZADA */}
           {citaSeleccionada && !puedeMostrarFinalizar(citaSeleccionada) && (
             <div className="flex-1 flex items-center justify-center p-1 bg-gray-100 text-gray-600 rounded border text-xs">
-              <CheckCircle className="w-3 h-3 mr-1 text-green-600" />
+              <CheckCircle className="w-3 h-3 mr-1 text-gray-600" />
               <span className="font-medium">
                 Servicio {getEstadoCita(citaSeleccionada).estado.toLowerCase()}
               </span>
@@ -1869,7 +1941,7 @@ export function AttentionProtocol({
   };
 
   // Si hay cita seleccionada pero no se ha elegido una vista específica
-  if (citaSeleccionada && vistaActual === "calendario") {
+  if (citaSeleccionada && vistaActual === "calendario" && !mostrarConfirmacionFinalizar) {
     return renderVistaMenuPrincipal();
   }
 
@@ -1881,17 +1953,23 @@ export function AttentionProtocol({
       datosIniciales: datosGuardados,
       onGuardar: (datos: any) => guardarFicha(tipoFichaSeleccionada, datos),
       onSubmit: (_: any) => {
-        const fichasActualizadas = fichasGuardadas.filter(
-          ficha => !(ficha.citaId === citaSeleccionada.cita_id && ficha.tipo === tipoFichaSeleccionada)
-        );
-        setFichasGuardadas(fichasActualizadas);
+        const citaId = getCitaId(citaSeleccionada);
+        const tipoActual = tipoFichaSeleccionada;
+
+        if (citaId && tipoActual) {
+          setFichasGuardadas((prev) =>
+            prev.filter((ficha) => !(ficha.citaId === citaId && ficha.tipo === tipoActual))
+          );
+        }
 
         setTipoFichaSeleccionada(null);
         setVistaActual("fichas");
+        scrollBottomSheetToTop();
       },
       onCancelar: () => {
         setTipoFichaSeleccionada(null);
         setVistaActual("fichas");
+        scrollBottomSheetToTop();
       }
     };
 
@@ -1940,8 +2018,8 @@ export function AttentionProtocol({
     return (
       <div className="rounded-lg border bg-white p-4"> {/* REDUCIDO de p-6 */}
         <div className="text-center py-6"> {/* REDUCIDO de py-8 */}
-          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3"> {/* REDUCIDO de w-16 h-16 mb-4 */}
-            <CheckCircle className="w-6 h-6 text-green-600" /> {/* REDUCIDO de w-8 h-8 */}
+          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3"> {/* REDUCIDO de w-16 h-16 mb-4 */}
+            <CheckCircle className="w-6 h-6 text-gray-600" /> {/* REDUCIDO de w-8 h-8 */}
           </div>
           <h4 className="text-base font-semibold text-gray-900 mb-1">¿Finalizar servicio?</h4> {/* REDUCIDO de text-lg mb-2 */}
           <p className="text-sm text-gray-600 mb-3"> {/* REDUCIDO de mb-4 */}
@@ -1949,11 +2027,11 @@ export function AttentionProtocol({
           </p>
 
           {fichasCitaActual.length > 0 && (
-            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded"> {/* REDUCIDO de mb-4 p-3 rounded-lg */}
-              <p className="text-yellow-700 text-xs"> {/* REDUCIDO de text-sm */}
+            <div className="mb-3 p-2 bg-gray-50 border border-gray-200 rounded"> {/* REDUCIDO de mb-4 p-3 rounded-lg */}
+              <p className="text-gray-700 text-xs"> {/* REDUCIDO de text-sm */}
                 <strong>⚠️ Advertencia:</strong> Tienes {fichasCitaActual.length} ficha(s) pendiente(s) que se perderán.
               </p>
-              <div className="mt-1 text-xs text-yellow-600"> {/* REDUCIDO de mt-2 */}
+              <div className="mt-1 text-xs text-gray-600"> {/* REDUCIDO de mt-2 */}
                 {fichasCitaActual.map((ficha, index) => (
                   <div key={index}>• {ficha.tipo.replace(/_/g, ' ')}</div>
                 ))}
@@ -1974,15 +2052,9 @@ export function AttentionProtocol({
             </Button>
             <Button
               size="sm"
-              className={`
-      px-4 text-xs
-      ${usuarioRol === "estilista"
-                  ? "bg-amber-600 hover:bg-amber-700"
-                  : "bg-green-600 hover:bg-green-700"
-                }
-    `}
-              onClick={() => finalizarServicioAPI(citaSeleccionada.cita_id)}
-              disabled={loadingFinalizar}
+              className={`px-4 text-xs ${primaryActionButtonClass}`}
+              onClick={() => finalizarServicioAPI(getCitaId(citaSeleccionada))}
+              disabled={loadingFinalizar || !getCitaId(citaSeleccionada)}
             >
               {loadingFinalizar ? (
                 <>

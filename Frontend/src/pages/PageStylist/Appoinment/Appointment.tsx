@@ -109,13 +109,13 @@ const getEstadoUI = (estado?: string) => {
   const value = (estado || "pendiente").toLowerCase().trim();
 
   if (value.includes("finaliz") || value.includes("complet")) {
-    return { label: "Finalizada", className: "bg-green-100 text-green-700" };
+    return { label: "Finalizada", className: "bg-gray-100 text-gray-700" };
   }
   if (value.includes("proceso") || value.includes("curso")) {
-    return { label: "En proceso", className: "bg-amber-100 text-amber-700" };
+    return { label: "En proceso", className: "bg-gray-100 text-gray-700" };
   }
   if (value.includes("cancel")) {
-    return { label: "Cancelada", className: "bg-red-100 text-red-700" };
+    return { label: "Cancelada", className: "bg-gray-100 text-gray-700" };
   }
   return { label: "Pendiente", className: "bg-gray-100 text-gray-700" };
 };
@@ -526,7 +526,7 @@ export default function VistaEstilistaPage() {
                     onClick={abrirBloqueoDelDia}
                     className="h-11 shrink-0 rounded-xl bg-gray-900 px-3 text-xs font-medium text-white"
                   >
-                    Bloquear este día
+                    Bloqueo
                   </button>
                 )}
               </div>
@@ -593,6 +593,10 @@ export default function VistaEstilistaPage() {
             <AttentionProtocol
               citaSeleccionada={citaSeleccionada}
               onVolver={() => setCitaSeleccionada(null)}
+              onFinalizarServicio={() => {
+                refetchCitas();
+                setCitaSeleccionada(null);
+              }}
               onFechaSeleccionada={(fecha) => {
                 if (!fecha) return;
                 setSelectedDate(fecha);
