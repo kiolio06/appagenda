@@ -10,7 +10,7 @@ import { ClientIndicators } from "./client-indicators";
 import { Button } from "../../../components/ui/button";
 import { useAuth } from "../../../components/Auth/AuthContext";
 import { formatSedeNombre } from "../../../lib/sede";
-import { formatDateDMY } from "../../../lib/dateFormat";
+import { formatDateDMY, toLocalYMD } from "../../../lib/dateFormat";
 import {
   getVentasDashboard,
   getVentasAvailablePeriods,
@@ -132,8 +132,8 @@ export default function DashboardPage() {
     last7Days.setDate(today.getDate() - 7);
     
     const defaultRange: DateRange = {
-      start_date: last7Days.toISOString().split('T')[0],
-      end_date: today.toISOString().split('T')[0]
+      start_date: toLocalYMD(last7Days),
+      end_date: toLocalYMD(today)
     };
     
     setDateRange(defaultRange);
@@ -200,7 +200,6 @@ export default function DashboardPage() {
       console.log('Cargando dashboard de ventas para sede:', selectedSede, 'período:', selectedPeriod, 'moneda:', monedaUsuario);
 
       const params: any = {
-        period: selectedPeriod,
         sede_id: selectedSede,
         moneda: monedaUsuario // Enviar moneda a la API
       };
@@ -213,6 +212,14 @@ export default function DashboardPage() {
         }
         params.start_date = dateRange.start_date;
         params.end_date = dateRange.end_date;
+        params.period = "custom";
+      } else if (selectedPeriod === "today") {
+        const todayLocal = toLocalYMD(new Date());
+        params.period = "custom";
+        params.start_date = todayLocal;
+        params.end_date = todayLocal;
+      } else {
+        params.period = selectedPeriod;
       }
 
       console.log('📤 Parámetros enviados a la API:', params);
@@ -277,8 +284,8 @@ export default function DashboardPage() {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(today.getDate() - 30);
 
-        finalStartDate = thirtyDaysAgo.toISOString().split('T')[0];
-        finalEndDate = today.toISOString().split('T')[0];
+        finalStartDate = toLocalYMD(thirtyDaysAgo);
+        finalEndDate = toLocalYMD(today);
       }
 
       const data = await getChurnClientes(user.access_token, {
@@ -466,8 +473,8 @@ export default function DashboardPage() {
     startDate.setDate(today.getDate() - days);
     
     const newRange: DateRange = {
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: today.toISOString().split('T')[0]
+      start_date: toLocalYMD(startDate),
+      end_date: toLocalYMD(today)
     };
     
     setTempDateRange(newRange);
@@ -517,7 +524,7 @@ export default function DashboardPage() {
   const DateRangeModal = () => {
     if (!showDateModal) return null;
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalYMD(new Date());
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -563,8 +570,8 @@ export default function DashboardPage() {
                   const today = new Date();
                   const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
                   setTempDateRange({
-                    start_date: firstDayOfMonth.toISOString().split('T')[0],
-                    end_date: today.toISOString().split('T')[0]
+                    start_date: toLocalYMD(firstDayOfMonth),
+                    end_date: toLocalYMD(today)
                   });
                 }}
               >
@@ -586,9 +593,6 @@ export default function DashboardPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                 max={tempDateRange.end_date || today}
               />
-              <p className="text-sm text-gray-600 mt-1">
-                {formatDateDisplay(tempDateRange.start_date)}
-              </p>
             </div>
 
             <div>
@@ -603,9 +607,6 @@ export default function DashboardPage() {
                 min={tempDateRange.start_date}
                 max={today}
               />
-              <p className="text-sm text-gray-600 mt-1">
-                {formatDateDisplay(tempDateRange.end_date)}
-              </p>
             </div>
           </div>
 
@@ -778,9 +779,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <PageHeader
               title="Dashboard"
-              subtitle={`${
-                dashboardData?.descripcion || "Métricas basadas en ventas pagadas"
-              } · Moneda: ${metricas.moneda} · País: ${user?.pais || "Colombia"}`}
+              subtitle={`Moneda: ${metricas.moneda} · País: ${user?.pais || "Colombia"}`}
               className="mb-0"
             />
 
