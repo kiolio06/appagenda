@@ -15,6 +15,11 @@ export const toDMY = (date: Date): string => {
   return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
 };
 
+export const toLocalYMD = (date: Date = new Date()): string => {
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
 export const parseDateToDate = (input?: string | number | Date): Date | null => {
   if (!input) return null;
 

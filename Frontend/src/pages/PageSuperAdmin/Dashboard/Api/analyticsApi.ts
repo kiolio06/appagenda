@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "../../../../types/config";
 import { formatCurrencyNoDecimals, getStoredCurrency, resolveCurrencyLocale } from "../../../../lib/currency";
-import { toBackendDate } from "../../../../lib/dateFormat";
+import { toBackendDate, toLocalYMD } from "../../../../lib/dateFormat";
 
 // Interfaces para el dashboard de ventas (financiero)
 export interface VentasMetricas {
@@ -224,8 +224,8 @@ export async function getDashboard(
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
     
-    queryParams.append('start_date', toBackendDate(thirtyDaysAgo.toISOString().split('T')[0]));
-    queryParams.append('end_date', toBackendDate(today.toISOString().split('T')[0]));
+    queryParams.append('start_date', toBackendDate(toLocalYMD(thirtyDaysAgo)));
+    queryParams.append('end_date', toBackendDate(toLocalYMD(today)));
   }
 
   if (params.sede_id) queryParams.append('sede_id', params.sede_id);

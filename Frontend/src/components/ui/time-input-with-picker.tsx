@@ -16,7 +16,7 @@ const TimeInputWithPicker: React.FC<TimeInputWithPickerProps> = ({
   wrapperClassName = "",
   buttonClassName = "",
   buttonAriaLabel = "Abrir selector de hora",
-  showButton = true,
+  showButton = false,
   openPickerOnInputClick = true,
   disabled,
   onClick: inputOnClick,
