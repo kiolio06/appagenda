@@ -526,7 +526,7 @@ export default function VistaEstilistaPage() {
                     onClick={abrirBloqueoDelDia}
                     className="h-11 shrink-0 rounded-xl bg-gray-900 px-3 text-xs font-medium text-white"
                   >
-                    Bloquear este día
+                    Bloqueo
                   </button>
                 )}
               </div>
@@ -593,6 +593,10 @@ export default function VistaEstilistaPage() {
             <AttentionProtocol
               citaSeleccionada={citaSeleccionada}
               onVolver={() => setCitaSeleccionada(null)}
+              onFinalizarServicio={() => {
+                refetchCitas();
+                setCitaSeleccionada(null);
+              }}
               onFechaSeleccionada={(fecha) => {
                 if (!fecha) return;
                 setSelectedDate(fecha);
