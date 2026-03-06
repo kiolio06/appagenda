@@ -50,7 +50,6 @@ const navItems: NavItem[] = [
   { title: 'Comisiones', href: '/sede/commissions', icon: CreditCard, module: APP_MODULES.SEDE_COMMISSIONS },
   { title: 'Ventas Facturadas', href: '/sede/sales-invoiced', icon: CreditCard, module: APP_MODULES.SEDE_SALES_INVOICED },
   { title: 'Cierre de Caja', href: '/sede/cierre-caja', icon: Wallet, module: APP_MODULES.SEDE_CIERRE_CAJA },
-  { title: 'Performance', href: '/sede/performance', icon: LayoutDashboard, module: APP_MODULES.SEDE_PERFORMANCE },
 
   { title: 'Comisiones', href: '/stylist/commissions', icon: CreditCard, module: APP_MODULES.STYLIST_COMMISSIONS },
 ];
