@@ -5,8 +5,18 @@ const getToken = (): string | null => {
   return sessionStorage.getItem("access_token") || localStorage.getItem("access_token");
 };
 
+const getActiveSedeId = (): string | null => {
+  const sedeId =
+    sessionStorage.getItem("beaux-sede_id") ||
+    localStorage.getItem("beaux-sede_id") ||
+    "";
+  const normalized = String(sedeId).trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
 const getHeaders = (): HeadersInit => {
   const token = getToken();
+  const sedeId = getActiveSedeId();
   const headers: HeadersInit = {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -14,6 +24,10 @@ const getHeaders = (): HeadersInit => {
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  if (sedeId) {
+    headers["X-Sede-Id"] = sedeId;
   }
 
   return headers;
@@ -61,17 +75,21 @@ const request = async <T>(
 ): Promise<T> => {
   const url = buildUrl(path, params);
 
-  const response = await fetch(url, {
-    method,
-    headers: getHeaders(),
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: getHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error("No se pudo conectar con el backend de caja. Verifica red o CORS.");
+  }
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      errorText || `Error ${response.status}: ${response.statusText}`
-    );
+    const fallback = `Error ${response.status}: ${response.statusText}`;
+    const message = await parseErrorMessage(response, fallback);
+    throw new Error(message);
   }
 
   if (response.status === 204) {
@@ -103,16 +121,20 @@ const requestBlob = async (
   params?: Record<string, any>
 ): Promise<{ blob: Blob; filename: string | null }> => {
   const url = buildUrl(path, params);
-  const response = await fetch(url, {
-    method: "GET",
-    headers: getHeaders(),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: getHeaders(),
+    });
+  } catch {
+    throw new Error("No se pudo conectar con el backend de caja. Verifica red o CORS.");
+  }
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      errorText || `Error ${response.status}: ${response.statusText}`
-    );
+    const fallback = `Error ${response.status}: ${response.statusText}`;
+    const message = await parseErrorMessage(response, fallback);
+    throw new Error(message);
   }
 
   const blob = await response.blob();
@@ -126,13 +148,20 @@ export const getEfectivoDia = async (
   params?: Record<string, any>
 ): Promise<any> => {
   const url = buildUrl("/efectivo-dia", params);
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const activeSedeId = getActiveSedeId();
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(activeSedeId ? { "X-Sede-Id": activeSedeId } : {}),
+      },
+    });
+  } catch {
+    throw new Error("No se pudo conectar con el backend de caja. Verifica red o CORS.");
+  }
 
   if (!response.ok) {
     const detail = await parseErrorMessage(response, "Error al obtener efectivo del día");
