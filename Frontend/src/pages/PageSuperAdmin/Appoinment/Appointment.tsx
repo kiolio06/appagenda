@@ -61,9 +61,14 @@ const CELL_WIDTH = 96;
 const MAX_STYLIST_COLUMN_WIDTH = 240;
 const CITA_TOOLTIP_WIDTH = 300;
 const TOOLTIP_MARGIN = 10;
+const normalizeRole = (role: string | null | undefined) =>
+  String(role ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
 
 const CalendarScheduler: React.FC = () => {
-  const { user } = useAuth();
+  const { user, activeSedeId, setActiveSedeId } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedSede, setSelectedSede] = useState<Sede | null>(null);
   const [sedes, setSedes] = useState<Sede[]>([]);
@@ -104,7 +109,33 @@ const CalendarScheduler: React.FC = () => {
     return selectedSede?.sede_id || '';
   }, [selectedSede]);
 
-  // OPTIMIZADO: Cargar sedes y seleccionar RF SURAMERICANA por defecto
+  const allowedSedes = useMemo(() => {
+    const set = new Set<string>();
+    const primary = String(user?.sede_id_principal ?? "").trim();
+    if (primary) set.add(primary);
+
+    const active = String(user?.sede_id ?? "").trim();
+    if (active) set.add(active);
+
+    if (Array.isArray(user?.sedes_permitidas)) {
+      user.sedes_permitidas.forEach((sedeId) => {
+        const normalized = String(sedeId ?? "").trim();
+        if (normalized) set.add(normalized);
+      });
+    }
+
+    return set;
+  }, [user?.sede_id, user?.sede_id_principal, user?.sedes_permitidas]);
+
+  const isSuperAdmin = useMemo(
+    () => {
+      const role = normalizeRole(user?.role);
+      return role === "super_admin" || role === "superadmin";
+    },
+    [user?.role]
+  );
+
+  // Cargar sedes y respetar el contexto de sede activo.
   useEffect(() => {
     const cargarSedesInicial = async () => {
       if (!user?.access_token) return;
@@ -121,24 +152,25 @@ const CalendarScheduler: React.FC = () => {
           dataCacheRef.current.set(cacheKey, sedesData);
         }
         
-        setSedes(sedesData);
-        
-        // Buscar RF SURAMERICANA específicamente (case insensitive)
-        const suramericana = sedesData.find(sede => 
-          sede.nombre.toLowerCase().includes('suramericana') || 
-          sede.nombre.toLowerCase().includes('sur americana') ||
-          sede.nombre.toLowerCase().includes('rf suramericana') ||
-          sede.nombre.toLowerCase().includes('rf sur americana')
-        );
-        
-        // Si encontramos RF SURAMERICANA, la seleccionamos
-        if (suramericana) {
-          console.log('✅ Sede RF SURAMERICANA encontrada:', suramericana.nombre);
-          setSelectedSede(suramericana);
-        } else if (sedesData.length > 0) {
-          // Si no encontramos RF SURAMERICANA, tomar la primera
-          console.log('⚠️ RF SURAMERICANA no encontrada, usando:', sedesData[0].nombre);
-          setSelectedSede(sedesData[0]);
+        const filteredSedes = isSuperAdmin
+          ? sedesData
+          : sedesData.filter((sede) => {
+              const sedeId = String(sede.sede_id ?? "").trim();
+              return sedeId ? allowedSedes.has(sedeId) : false;
+            });
+
+        setSedes(filteredSedes);
+
+        const preferredSedeId = String(
+          activeSedeId || user?.sede_id || user?.sede_id_principal || ""
+        ).trim();
+        const preferredSede = filteredSedes.find((sede) => sede.sede_id === preferredSedeId);
+        const nextSelectedSede = preferredSede || filteredSedes[0] || null;
+
+        setSelectedSede(nextSelectedSede);
+
+        if (nextSelectedSede?.sede_id && nextSelectedSede.sede_id !== activeSedeId) {
+          setActiveSedeId(nextSelectedSede.sede_id);
         }
       } catch (error) {
         console.error('Error cargando sedes:', error);
@@ -148,7 +180,16 @@ const CalendarScheduler: React.FC = () => {
     };
     
     cargarSedesInicial();
-  }, [user]);
+  }, [
+    user?.access_token,
+    user?.sede_id,
+    user?.sede_id_principal,
+    user?.role,
+    activeSedeId,
+    allowedSedes,
+    isSuperAdmin,
+    setActiveSedeId,
+  ]);
 
   const handleCitaClick = useCallback((apt: Appointment) => {
     console.log('Cita clickeada:', apt);
@@ -1394,6 +1435,9 @@ const CalendarScheduler: React.FC = () => {
                 onChange={(e) => {
                   const sede = sedes.find(s => s._id === e.target.value);
                   setSelectedSede(sede || null);
+                  if (sede?.sede_id) {
+                    setActiveSedeId(sede.sede_id);
+                  }
                 }}
               >
                   <option value="">Selecciona una sede</option>

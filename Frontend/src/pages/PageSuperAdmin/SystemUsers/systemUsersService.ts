@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../../../types/config";
-import type { CreateSystemUserPayload, SystemUser } from "../../../types/system-user";
+import type { CreateSystemUserPayload, SystemUser, SystemUserRole } from "../../../types/system-user";
 
 const parseErrorMessage = async (response: Response) => {
   const raw = await response.text().catch(() => "");
@@ -21,25 +21,29 @@ const normalizeRole = (role: string | null | undefined) =>
 
 const isFallbackCandidate = (response: Response) => response.status === 404 || response.status === 405;
 
-const toPublicRole = (rawRole: string): string => {
+const toCanonicalRole = (rawRole: string): SystemUserRole => {
   const role = normalizeRole(rawRole);
+  if (role === "super_admin" || role === "superadmin") return "super_admin";
+  if (role === "admin_sede" || role === "adminsede" || role === "admin") return "admin_sede";
+  if (role === "call_center" || role === "callcenter" || role === "soporte") return "call_center";
+  if (role === "recepcionista" || role === "recepcionoista") return "recepcionista";
+  return "admin_sede";
+};
+
+const toLegacySystemUserRole = (role: SystemUserRole): string => {
   if (role === "super_admin") return "superadmin";
-  if (role === "adminsede") return "admin_sede";
-  if (role === "callcenter" || role === "soporte") return "call_center";
-  if (role === "recepcionoista") return "recepcionista";
   return role;
 };
 
-const SYSTEM_ROLES = new Set([
-  "superadmin",
+const SYSTEM_ROLES = new Set<SystemUserRole>([
+  "super_admin",
   "admin_sede",
   "recepcionista",
   "call_center",
-  "admin",
 ]);
 
 const isSystemUser = (user: SystemUser) => {
-  const role = normalizeRole(user.role);
+  const role = toCanonicalRole(user.role);
   const userType = normalizeRole(user.user_type);
   return SYSTEM_ROLES.has(role) || userType === "system" || userType === "";
 };
@@ -50,9 +54,12 @@ const mapToSystemUser = (rawUser: any): SystemUser => {
     _id: id,
     nombre: String(rawUser?.nombre ?? rawUser?.name ?? ""),
     email: String(rawUser?.email ?? rawUser?.correo_electronico ?? ""),
-    role: toPublicRole(String(rawUser?.role ?? rawUser?.rol ?? "")) as SystemUser["role"],
+    role: toCanonicalRole(String(rawUser?.role ?? rawUser?.rol ?? "")),
     sede_id: rawUser?.sede_id ?? null,
     sede_nombre: rawUser?.sede_nombre ?? rawUser?.nombre_local ?? null,
+    sedes_permitidas: Array.isArray(rawUser?.sedes_permitidas)
+      ? rawUser.sedes_permitidas.map((sedeId: unknown) => String(sedeId ?? "").trim()).filter(Boolean)
+      : [],
     especialidades: Array.isArray(rawUser?.especialidades) ? rawUser.especialidades : [],
     activo: Boolean(rawUser?.activo ?? true),
     user_type: String(rawUser?.user_type ?? "system"),
@@ -64,9 +71,22 @@ const mapToSystemUser = (rawUser: any): SystemUser => {
 const getAuthPatchRoleCandidates = (role: CreateSystemUserPayload["role"]): string[] => {
   const normalized = normalizeRole(role);
 
-  if (normalized === "superadmin") return ["super_admin", "superadmin"];
-  if (normalized === "call_center") return ["call_center", "callcenter", "soporte"];
-  if (normalized === "recepcionista") return ["recepcionista", "recepcionoista"];
+  if (normalized === "super_admin" || normalized === "superadmin") {
+    return ["super_admin", "superadmin"];
+  }
+
+  if (normalized === "admin_sede" || normalized === "adminsede" || normalized === "admin") {
+    return ["admin_sede", "adminsede", "admin"];
+  }
+
+  if (normalized === "call_center") {
+    return ["call_center", "callcenter", "soporte"];
+  }
+
+  if (normalized === "recepcionista") {
+    return ["recepcionista", "recepcionoista"];
+  }
+
   return [normalized];
 };
 
@@ -74,7 +94,7 @@ const toSystemUserCreateRequest = (payload: CreateSystemUserPayload): Record<str
   const requestData: Record<string, unknown> = {
     nombre: payload.nombre.trim(),
     email: payload.email.trim().toLowerCase(),
-    role: normalizeRole(payload.role),
+    role: toLegacySystemUserRole(payload.role),
     activo: payload.activo ?? true,
   };
 
@@ -131,14 +151,13 @@ const tryCreateWithAuthRegister = async (
     });
 
     if (response.ok) {
-      const normalizedRole = toPublicRole(roleCandidate);
       return {
         success: true,
         user: {
           _id: "",
           nombre: payload.nombre.trim(),
           email: payload.email.trim().toLowerCase(),
-          role: normalizedRole as SystemUser["role"],
+          role: toCanonicalRole(roleCandidate),
           sede_id: payload.sede_id?.trim() || null,
           especialidades: payload.especialidades || [],
           activo: payload.activo ?? true,
@@ -354,3 +373,4 @@ export const systemUsersService = {
     return { success: true, softDeleted: true };
   },
 };
+
