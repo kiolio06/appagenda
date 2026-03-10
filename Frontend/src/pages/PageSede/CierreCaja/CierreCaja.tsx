@@ -2,20 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "../../../components/Layout/Sidebar";
-import { PageHeader } from "../../../components/Layout/PageHeader";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
 // import { Textarea } from "../../../components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../../components/ui/dialog";
-import { Calendar, Download, Loader2, Plus, Trash2 } from "lucide-react"; //Wallet +
+import { Loader2 } from "lucide-react"; //Wallet +
 import { cashService, getEfectivoDia } from "./api/cashService";
 import type { CashCierre, CashEgreso, CashIngreso, CashResumen, CashReporteRaw } from "./types";
 import { formatDateDMY } from "../../../lib/dateFormat";
@@ -31,23 +22,12 @@ const toLocalDateString = (date: Date) => {
 
 const getToday = () => toLocalDateString(new Date());
 
-const getDateNDaysAgo = (days: number) => {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return toLocalDateString(date);
-};
-
 const normalizeDateRange = (start?: string, end?: string) => {
   if (!start || !end) return { start, end };
   if (start > end) {
     return { start: end, end: start };
   }
   return { start, end };
-};
-
-const isISODate = (value?: string) => {
-  if (!value) return false;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 };
 
 const toNumber = (value: any): number => {
@@ -71,15 +51,95 @@ const pickNumber = (source: any, keys: string[]): number | undefined => {
 };
 
 const unwrapData = (data: any) => data?.data ?? data?.result ?? data;
+const pickArray = (...candidates: any[]): any[] => {
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+};
 
 const formatDate = (dateString?: string) => formatDateDMY(dateString);
+const hasClockTime = (value?: string) => {
+  if (!value) return false;
+  return /\d{2}:\d{2}/.test(value);
+};
+
+const parseBackendDateTime = (value?: string | number | Date): Date | null => {
+  if (value === undefined || value === null || value === "") return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const normalized = raw.includes(" ") ? raw.replace(" ", "T") : raw;
+  const hasTime = hasClockTime(normalized);
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  const candidate = hasTime && !hasTimezone ? `${normalized}Z` : normalized;
+
+  const parsed = new Date(candidate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatTimeLabel = (value?: string) => {
+  const parsed = parseBackendDateTime(value);
+  if (!parsed) return "--";
+  return parsed
+    .toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .toUpperCase();
+};
+
+const formatTableTime = (value?: string) => {
+  const parsed = parseBackendDateTime(value);
+  if (!parsed) return "--";
+
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+  return `${hours}.${minutes}`;
+};
+
+const formatHeaderDate = (value?: string) => {
+  if (!value) return "--";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return formatDate(value);
+
+  const monthIndex = Number(month) - 1;
+  const baseDate = new Date(Number(year), monthIndex, Number(day));
+  if (Number.isNaN(baseDate.getTime())) return formatDate(value);
+
+  const monthName = baseDate.toLocaleDateString("es-CO", { month: "long" });
+  const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  return `${day} ${capitalizedMonth} ${year}`;
+};
+
+const normalizePaymentMethod = (value?: string) => {
+  const method = String(value || "otros").replace(/_/g, " ").trim();
+  if (!method) return "Otros";
+  return method.charAt(0).toUpperCase() + method.slice(1);
+};
+
+const normalizePaymentMethodKey = (value?: string) => {
+  return String(value || "otros")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+};
+
 const toTimestamp = (value?: string) => {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  if (!Number.isNaN(parsed)) return parsed;
-  const normalized = value.includes(" ") ? value.replace(" ", "T") : value;
-  const fallbackParsed = Date.parse(normalized);
-  return Number.isNaN(fallbackParsed) ? 0 : fallbackParsed;
+  const parsed = parseBackendDateTime(value);
+  if (!parsed) return 0;
+  return parsed.getTime();
 };
 
 export default function CierreCajaPage() {
@@ -89,8 +149,8 @@ export default function CierreCajaPage() {
   const [sedeNombre, setSedeNombre] = useState<string | null>(null);
   const monedaSede = String(moneda || "COP").toUpperCase();
 
-  const [fechaDesde, setFechaDesde] = useState(getToday());
-  const [fechaHasta, setFechaHasta] = useState(getToday());
+  const [fechaDesde] = useState(getToday());
+  const [fechaHasta] = useState(getToday());
 
   const [resumen, setResumen] = useState<CashResumen>({
     ingresos: 0,
@@ -106,25 +166,24 @@ export default function CierreCajaPage() {
   const [loadingIngresos, setLoadingIngresos] = useState(false);
   const [loadingEgresos, setLoadingEgresos] = useState(false);
   const [loadingCierres, setLoadingCierres] = useState(false);
-  const [loadingReporte, setLoadingReporte] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [reportePeriodo, setReportePeriodo] = useState<CashReporteRaw | null>(null);
+  const [descargandoReporte, setDescargandoReporte] = useState(false);
 
   // Form states
   const [ingresoMonto, setIngresoMonto] = useState("");
   const [ingresoMetodoPago, setIngresoMetodoPago] = useState("efectivo");
   const [ingresoMotivo, setIngresoMotivo] = useState("");
   const [ingresoFecha, setIngresoFecha] = useState(getToday());
-  const [ingresoModalOpen, setIngresoModalOpen] = useState(false);
 
   const [egresoMonto, setEgresoMonto] = useState("");
   const [egresoMotivo, setEgresoMotivo] = useState("");
   const [egresoFecha, setEgresoFecha] = useState(getToday());
   const [egresoMetodoPago, setEgresoMetodoPago] = useState("efectivo");
   const [egresoTipo, setEgresoTipo] = useState("gasto_operativo");
-  const [egresoModalOpen, setEgresoModalOpen] = useState(false);
 
   const [efectivoEnCaja, setEfectivoEnCaja] = useState<number | null>(null);
   const [loadingEfectivoEnCaja, setLoadingEfectivoEnCaja] = useState(false);
@@ -162,26 +221,8 @@ export default function CierreCajaPage() {
     setMoneda((resolvedMoneda || "COP").toUpperCase());
   }, [user?.sede_id, user?.nombre_local, user?.moneda]);
 
-  const ingresosManualesTotal = useMemo(() => {
-    return ingresos.reduce((sum, ingreso) => sum + (ingreso.monto || 0), 0);
-  }, [ingresos]);
-
   const egresosTotal = useMemo(() => {
     return egresos.reduce((sum, egreso) => sum + (egreso.monto || 0), 0);
-  }, [egresos]);
-
-  const balanceCalculado = useMemo(() => {
-    const egresosValor = resumen.egresos || egresosTotal;
-    return (resumen.ingresos || 0) - egresosValor;
-  }, [resumen.ingresos, resumen.egresos, egresosTotal]);
-
-  const egresosOrdenados = useMemo(() => {
-    return [...egresos].sort((a, b) => {
-      const bTimestamp = toTimestamp(b.fecha) || toTimestamp(b.creado_en);
-      const aTimestamp = toTimestamp(a.fecha) || toTimestamp(a.creado_en);
-      if (bTimestamp !== aTimestamp) return bTimestamp - aTimestamp;
-      return String(b.id).localeCompare(String(a.id));
-    });
   }, [egresos]);
 
   const cierreDiferencia = useMemo(() => {
@@ -254,21 +295,55 @@ export default function CierreCajaPage() {
 
   const normalizeEgresos = (data: any): CashEgreso[] => {
     const root = unwrapData(data);
-    const lista =
-      root?.egresos ?? root?.items ?? root?.data ?? (Array.isArray(root) ? root : []);
-
-    if (!Array.isArray(lista)) return [];
+    const lista = pickArray(
+      root?.egresos,
+      root?.items,
+      root?.data,
+      root?.results,
+      root?.rows,
+      root?.movimientos,
+      root?.egresos?.items,
+      root?.egresos?.data,
+      root?.data?.egresos,
+      root
+    );
 
     return lista.map((item, index) => {
       return {
         id: item._id || item.id || item.egreso_id || String(index),
         sede_id: item.sede_id,
         monto: toNumber(item.monto ?? item.valor ?? item.total ?? item.importe ?? 0),
-        motivo: item.motivo ?? item.nota ?? item.descripcion ?? item.observacion ?? "Sin motivo",
-        fecha: item.fecha ?? item.created_at ?? item.creado_en ?? item.fecha_egreso ?? getToday(),
-        creado_en: item.creado_en,
+        motivo:
+          item.motivo ??
+          item.nota ??
+          item.descripcion ??
+          item.concepto ??
+          item.observacion ??
+          "Sin motivo",
+        concepto: item.concepto ?? item.descripcion ?? item.motivo ?? item.nota,
+        tipo: item.tipo ?? item.tipo_movimiento,
+        metodo_pago: item.metodo_pago ?? item.medio_pago ?? item.medio ?? "efectivo",
+        fecha:
+          item.fecha ??
+          item.created_at ??
+          item.creado_en ??
+          item.fecha_creacion ??
+          item.fecha_egreso ??
+          getToday(),
+        creado_en: item.creado_en ?? item.created_at ?? item.fecha_creacion,
       };
     });
+  };
+
+  const formatSignedMoney = (value: number) => {
+    if (value < 0) return `-${formatMoney(Math.abs(value))}`;
+    return formatMoney(value);
+  };
+
+  const formatTrendMoney = (value: number) => {
+    if (value > 0) return `↑ ${formatMoney(value)}`;
+    if (value < 0) return `↓ ${formatMoney(Math.abs(value))}`;
+    return formatMoney(0);
   };
 
   const normalizeIngresos = (data: any): CashIngreso[] => {
@@ -285,8 +360,8 @@ export default function CierreCajaPage() {
         monto: toNumber(item.monto ?? item.valor ?? item.total ?? item.importe ?? 0),
         motivo: item.motivo ?? item.descripcion ?? item.observacion ?? "Ingreso manual",
         metodo_pago: item.metodo_pago ?? item.metodo ?? "otros",
-        fecha: item.fecha ?? item.created_at ?? item.creado_en ?? getToday(),
-        creado_en: item.creado_en,
+        fecha: item.fecha ?? item.created_at ?? item.creado_en ?? item.fecha_creacion ?? getToday(),
+        creado_en: item.creado_en ?? item.created_at ?? item.fecha_creacion,
       };
     });
   };
@@ -410,6 +485,7 @@ export default function CierreCajaPage() {
         fecha_fin: end,
       });
       setResumen(normalizeResumen(reporte));
+      setReportePeriodo(reporte);
     } catch (err) {
       if (start === end) {
         try {
@@ -418,12 +494,15 @@ export default function CierreCajaPage() {
             fecha: start,
           });
           setResumen(normalizeResumen(efectivo));
+          setReportePeriodo(null);
         } catch (innerErr) {
           setResumen({ ingresos: 0, egresos: 0, balance: 0, moneda: monedaSede });
+          setReportePeriodo(null);
           setError("No se pudieron cargar los ingresos del período");
         }
       } else {
         setResumen({ ingresos: 0, egresos: 0, balance: 0, moneda: monedaSede });
+        setReportePeriodo(null);
         setError("No se pudieron cargar los ingresos del período");
       }
     } finally {
@@ -444,9 +523,9 @@ export default function CierreCajaPage() {
         fecha_inicio: start,
         fecha_fin: end,
       });
-      setEgresos(normalizeEgresos(result));
+      const egresosNormalizados = normalizeEgresos(result);
+      setEgresos((prev) => (egresosNormalizados.length > 0 ? egresosNormalizados : prev));
     } catch (err) {
-      setEgresos([]);
       setError("No se pudieron cargar los egresos");
     } finally {
       setLoadingEgresos(false);
@@ -550,7 +629,6 @@ export default function CierreCajaPage() {
         title: "Ingreso registrado",
         description: "El ingreso manual se guardó correctamente.",
       });
-      setIngresoModalOpen(false);
       await loadAll();
     } catch (err: any) {
       setError(err?.message || "No se pudo registrar el ingreso");
@@ -579,7 +657,7 @@ export default function CierreCajaPage() {
     setSuccess(null);
 
     try {
-      await cashService.createEgreso({
+      const response = await cashService.createEgreso({
         sede_id: sedeId,
         monto: montoValue,
         valor: montoValue,
@@ -594,32 +672,34 @@ export default function CierreCajaPage() {
         moneda: monedaSede,
       });
 
+      const egresoRegistradoId = String(
+        response?.egreso_id || response?.id || `tmp-egreso-${Date.now()}`
+      );
+
+      setEgresos((prev) => {
+        const nuevoEgreso: CashEgreso = {
+          id: egresoRegistradoId,
+          sede_id: sedeId,
+          monto: montoValue,
+          motivo,
+          concepto: motivo,
+          tipo: egresoTipo,
+          metodo_pago: egresoMetodoPago,
+          fecha: egresoFecha,
+          creado_en: response?.creado_en || new Date().toISOString(),
+        };
+
+        return [nuevoEgreso, ...prev.filter((item) => String(item.id) !== egresoRegistradoId)];
+      });
+
       setEgresoMonto("");
       setEgresoMotivo("");
       setEgresoMetodoPago("efectivo");
       setEgresoTipo("gasto_operativo");
       setSuccess("Egreso registrado correctamente");
-      setEgresoModalOpen(false);
       await loadAll();
     } catch (err: any) {
       setError(err?.message || "No se pudo registrar el egreso");
-    } finally {
-      setLoadingAction(false);
-    }
-  };
-
-  const handleDeleteEgreso = async (egresoId: string) => {
-    if (!sedeId) return;
-    setLoadingAction(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      await cashService.deleteEgreso(egresoId, { sede_id: sedeId });
-      setSuccess("Egreso eliminado");
-      await loadAll();
-    } catch (err: any) {
-      setError(err?.message || "No se pudo eliminar el egreso");
     } finally {
       setLoadingAction(false);
     }
@@ -673,6 +753,13 @@ export default function CierreCajaPage() {
       });
 
       await loadAll();
+      const reporteCierre = await cashService.getReportePeriodo({
+        sede_id: sedeId,
+        fecha_inicio: cierreFecha,
+        fecha_fin: cierreFecha,
+      });
+      setReportePeriodo(reporteCierre);
+      setResumen(normalizeResumen(reporteCierre));
     } catch (err: any) {
       setError(err?.message || "No se pudo cerrar la caja");
     } finally {
@@ -765,707 +852,625 @@ export default function CierreCajaPage() {
   //   }
   // };
 
-  const applyQuickRange = (days: number) => {
-    setFechaDesde(getDateNDaysAgo(days));
-    setFechaHasta(getToday());
+  const abonosTotal = useMemo(() => {
+    return ingresos.reduce((sum, ingreso) => {
+      const metodo = String(ingreso.metodo_pago || "").toLowerCase();
+      return metodo === "abonos" ? sum + (ingreso.monto || 0) : sum;
+    }, 0);
+  }, [ingresos]);
+
+  type MovimientoDia = {
+    id: string;
+    tipo: "ingreso" | "egreso";
+    etiquetaTipo: string;
+    detalle: string;
+    medio: string;
+    monto: number;
+    hora: string;
+    timestamp: number;
+    orden: number;
   };
 
-  const handleDownloadReporte = async () => {
-    if (!sedeId) {
-      setError("No se encontró la sede actual para descargar el reporte");
-      return;
+  const movimientosDia = useMemo<MovimientoDia[]>(() => {
+    const ingresosNormalizados: MovimientoDia[] = ingresos.map((ingreso, index) => {
+      const fechaMovimiento = ingreso.creado_en || ingreso.fecha;
+      const metodo = String(ingreso.metodo_pago || "").toLowerCase();
+
+      return {
+        id: `ingreso-${ingreso.id}`,
+        tipo: "ingreso",
+        etiquetaTipo: metodo === "abonos" ? "Abono" : "Ingreso manual",
+        detalle: ingreso.motivo || "Ingreso manual",
+        medio: normalizePaymentMethod(ingreso.metodo_pago),
+        monto: ingreso.monto || 0,
+        hora: formatTableTime(fechaMovimiento),
+        timestamp: toTimestamp(fechaMovimiento),
+        orden: index,
+      };
+    });
+
+    const egresosNormalizados: MovimientoDia[] = egresos.map((egreso, index) => {
+      const fechaMovimiento = egreso.creado_en || egreso.fecha;
+      return {
+        id: `egreso-${egreso.id}`,
+        tipo: "egreso",
+        etiquetaTipo: "Egreso",
+        detalle: egreso.concepto || egreso.motivo || "Egreso",
+        medio: normalizePaymentMethod(egreso.metodo_pago),
+        monto: -Math.abs(egreso.monto || 0),
+        hora: formatTableTime(fechaMovimiento),
+        timestamp: toTimestamp(fechaMovimiento),
+        orden: index,
+      };
+    });
+
+    return [...ingresosNormalizados, ...egresosNormalizados].sort((a, b) => {
+      const aHasTimestamp = a.timestamp > 0;
+      const bHasTimestamp = b.timestamp > 0;
+
+      if (aHasTimestamp && bHasTimestamp && a.timestamp !== b.timestamp) {
+        return a.timestamp - b.timestamp;
+      }
+      if (aHasTimestamp !== bHasTimestamp) {
+        return aHasTimestamp ? -1 : 1;
+      }
+      if (a.orden !== b.orden) {
+        return a.orden - b.orden;
+      }
+      return a.id.localeCompare(b.id);
+    });
+  }, [egresos, ingresos]);
+
+  const movimientosConSaldo = useMemo(() => {
+    let saldoAcumulado = 0;
+    return movimientosDia.map((movimiento) => {
+      saldoAcumulado = Number((saldoAcumulado + movimiento.monto).toFixed(2));
+      return {
+        ...movimiento,
+        saldo_esperado: saldoAcumulado,
+      };
+    });
+  }, [movimientosDia]);
+
+  const saldosPorMedio = useMemo(() => {
+    const totales: Record<string, number> = {};
+    const accumulate = (method: string | undefined, amount: number) => {
+      const key = normalizePaymentMethodKey(method);
+      totales[key] = Number(((totales[key] || 0) + amount).toFixed(2));
+    };
+
+    for (const ingreso of ingresos) {
+      accumulate(ingreso.metodo_pago, ingreso.monto || 0);
     }
 
-    if (!fechaDesde || !fechaHasta) {
-      setError("Selecciona fecha desde y fecha hasta para descargar el reporte");
-      return;
+    for (const egreso of egresos) {
+      accumulate(egreso.metodo_pago, -Math.abs(egreso.monto || 0));
     }
 
-    const { start, end } = normalizeDateRange(fechaDesde, fechaHasta);
-    if (!isISODate(start) || !isISODate(end)) {
-      setError("Formato de fecha inválido. Usa YYYY-MM-DD");
-      return;
-    }
+    const sumMethods = (methods: string[]) => {
+      return methods.reduce((sum, method) => sum + (totales[normalizePaymentMethodKey(method)] || 0), 0);
+    };
 
-    setLoadingReporte(true);
+    const efectivo = sumMethods(["efectivo"]);
+    const tarjetas = sumMethods(["tarjeta_credito", "tarjeta_debito", "tarjeta", "pos"]);
+    const transferencias = sumMethods(["transferencia", "link_de_pago"]);
+    const creditoEmpleados = sumMethods(["credito_empleados", "abonos"]);
+    const addi = sumMethods(["addi"]);
+    const total = efectivo + tarjetas + transferencias + creditoEmpleados + addi;
+
+    return {
+      izquierda: [
+        { label: "Efectivo", value: efectivo, trend: true },
+        { label: "Tarjetas", value: tarjetas, trend: true },
+        { label: "Transferencias", value: transferencias, trend: true },
+        { label: "Total", value: total, trend: false, total: true },
+      ],
+      derecha: [
+        { label: "Tarjeta", value: tarjetas, trend: true },
+        { label: "Transferencias", value: transferencias, trend: true },
+        { label: "Crédito empleados", value: creditoEmpleados, trend: false },
+        { label: "Addi", value: addi, trend: false },
+      ],
+    };
+  }, [egresos, ingresos]);
+
+  const reporteResumen = useMemo(() => {
+    if (!reportePeriodo) return null;
+    const root = unwrapData(reportePeriodo) || {};
+    const totales = root?.totales || {};
+    const periodo = root?.periodo || {};
+    const cierresReporte = Array.isArray(root?.cierres) ? root.cierres : [];
+
+    return {
+      inicio: String(periodo?.inicio || fechaDesde || ""),
+      fin: String(periodo?.fin || fechaHasta || ""),
+      ingresos: toNumber(totales?.ingresos),
+      egresos: toNumber(totales?.egresos),
+      neto: toNumber(totales?.neto),
+      diferencias: toNumber(totales?.diferencias_acumuladas),
+      cierres: cierresReporte,
+    };
+  }, [reportePeriodo, fechaDesde, fechaHasta]);
+
+  const handleDescargarReporte = async () => {
+    if (!sedeId) return;
+    const { start, end } = normalizeDateRange(cierreFecha, cierreFecha);
+    if (!start || !end) return;
+
+    setDescargandoReporte(true);
     setError(null);
-    setSuccess(null);
 
-    let objectUrl: string | null = null;
     try {
       const { blob, filename } = await cashService.getReporteExcel({
         sede_id: sedeId,
-        // Compatibilidad con backend actual (requiere 'fecha')
-        fecha: end,
         fecha_inicio: start,
         fecha_fin: end,
       });
-
-      if (!blob || blob.size === 0) {
-        throw new Error("El reporte no contiene datos para el período seleccionado");
-      }
-
-      objectUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = filename?.trim() || `reporte_cierre_${start}_${end}.xlsx`;
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      setSuccess("Reporte descargado correctamente");
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = filename || `reporte_caja_${start}.xlsx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(blobUrl);
     } catch (err: any) {
-      setError(err?.message || "No se pudo descargar el reporte");
+      setError(err?.message || "No se pudo descargar el reporte en Excel");
     } finally {
-      if (objectUrl) {
-        window.URL.revokeObjectURL(objectUrl);
-      }
-      setLoadingReporte(false);
+      setDescargandoReporte(false);
     }
   };
 
+  const cajaAbiertaDesde = useMemo(() => {
+    const ultimoCierre = [...cierres].sort((a, b) => {
+      const bTime = toTimestamp(b.fecha_apertura || b.fecha_cierre);
+      const aTime = toTimestamp(a.fecha_apertura || a.fecha_cierre);
+      return bTime - aTime;
+    })[0];
+
+    const desdeCierre = formatTimeLabel(ultimoCierre?.fecha_apertura);
+    if (desdeCierre !== "--") return desdeCierre;
+
+    const primerMovimiento = [...movimientosDia]
+      .filter((movimiento) => movimiento.timestamp > 0)
+      .sort((a, b) => a.timestamp - b.timestamp)[0];
+
+    if (!primerMovimiento?.timestamp) return "--";
+    return formatTimeLabel(new Date(primerMovimiento.timestamp).toISOString());
+  }, [cierres, movimientosDia]);
+
+  const resetIngresoForm = () => {
+    setIngresoMonto("");
+    setIngresoMetodoPago("efectivo");
+    setIngresoMotivo("");
+    setIngresoFecha(getToday());
+    setError(null);
+  };
+
+  const resetEgresoForm = () => {
+    setEgresoMonto("");
+    setEgresoMotivo("");
+    setEgresoMetodoPago("efectivo");
+    setEgresoTipo("gasto_operativo");
+    setEgresoFecha(getToday());
+    setError(null);
+  };
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-[#f1eff6]">
       <Sidebar />
       <main className="flex-1 overflow-auto">
-        <div className="p-8 space-y-6">
-          <PageHeader
-            title="Cierre de Caja"
-            subtitle={sedeNombre ? `Sede: ${sedeNombre}` : "Gestión por sede"}
-            className="mb-0"
-          />
-
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-gray-900">
-              {error}
-            </div>
-          )}
-          {success && (
-            <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-              {success}
-            </div>
-          )}
-
-          {/* Filtros de fecha */}
-          <Card className="border-gray-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Rango de fechas
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Fecha desde</label>
-                  <Input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Fecha hasta</label>
-                  <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
-                </div>
-                <div className="flex items-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => applyQuickRange(0)}>
-                    Hoy
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => applyQuickRange(7)}>
-                    7 días
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => applyQuickRange(30)}>
-                    30 días
-                  </Button>
-                </div>
+        <div className="mx-auto max-w-[1360px] p-3 sm:p-6 lg:p-8">
+          <div className="space-y-4">
+            {error && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-gray-900">
+                {error}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  onClick={loadAll}
-                  disabled={loadingResumen || loadingIngresos || loadingEgresos || loadingCierres || loadingReporte}
-                  className="bg-gray-900 hover:bg-gray-800 text-white"
-                >
-                  Actualizar
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleDownloadReporte}
-                  disabled={
-                    !sedeId ||
-                    !fechaDesde ||
-                    !fechaHasta ||
-                    loadingReporte ||
-                    loadingResumen ||
-                    loadingIngresos ||
-                    loadingEgresos ||
-                    loadingCierres
-                  }
-                  className="border-gray-300 text-gray-900 hover:bg-gray-100"
-                >
-                  {loadingReporte ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="mr-2 h-4 w-4" />
-                  )}
-                  {loadingReporte ? "Descargando..." : "Descargar reporte"}
-                </Button>
+            )}
+            {success && (
+              <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                {success}
               </div>
-            </CardContent>
-          </Card>
+            )}
 
-          {/* Resumen financiero */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-600">Ingresos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
-                  {loadingResumen ? "..." : formatMoney(resumen.ingresos || 0)}
-                </div>
-                <p className="text-xs text-gray-500">Ventas + ingresos manuales</p>
-              </CardContent>
-            </Card>
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-600">Egresos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
-                  {loadingEgresos ? "..." : formatMoney(resumen.egresos || egresosTotal)}
-                </div>
-                <p className="text-xs text-gray-500">Gastos registrados</p>
-              </CardContent>
-            </Card>
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-600">Balance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
-                  {loadingResumen ? "..." : formatMoney(resumen.balance || balanceCalculado)}
-                </div>
-                <p className="text-xs text-gray-500">Ingresos - egresos</p>
-              </CardContent>
-            </Card>
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-600">Efectivo en caja</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingEfectivoEnCaja ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Consultando efectivo del día...
-                  </div>
-                ) : (
-                  <div className="text-2xl font-bold text-gray-900">
-                    {efectivoEnCaja === null ? "--" : formatMoney(efectivoEnCaja)}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Cierre de caja */}
-          <Card className="border-gray-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-700">Cerrar caja</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Fecha de cierre</label>
-                  <Input
-                    type="date"
-                    value={cierreFecha}
-                    onChange={(e) => setCierreFecha(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Efectivo contado</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={cierreEfectivoContado}
-                    onChange={(e) => setCierreEfectivoContado(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
+            <section className="space-y-4 rounded-2xl border border-[#d8d4e2] bg-[#f7f5fb] p-4 shadow-sm sm:p-6">
+              <div className="space-y-1 border-b border-[#dfdce8] pb-4">
+                <h1 className="text-4xl font-semibold tracking-tight text-[#2e2d35]">Cierres de caja</h1>
+                <p className="text-xl text-[#656271]">{sedeNombre ? `Caja Sede ${sedeNombre}` : "Caja de la sede"}</p>
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-gray-600">Observaciones (opcional)</label>
-                <Input
-                  value={cierreNota}
-                  onChange={(e) => setCierreNota(e.target.value)}
-                  placeholder="Notas del cierre de caja"
-                />
+              <div className="space-y-1 border-b border-[#dfdce8] pb-3">
+                <p className="text-3xl font-semibold text-[#2e2d35]">{formatHeaderDate(fechaHasta)}</p>
+                <p className="text-sm text-[#6d6a77]">Caja abierta desde: {loadingCierres ? "..." : cajaAbiertaDesde}</p>
               </div>
 
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
-                <div className="flex items-center justify-between">
-                  <span>Efectivo sistema</span>
-                  <span className="font-semibold">
-                    {efectivoEnCaja === null ? "--" : formatMoney(efectivoEnCaja)}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <span>Diferencia (contado - sistema)</span>
-                  <span
-                    className={`font-semibold ${
-                      cierreDiferencia === null
-                        ? "text-gray-700"
-                        : cierreDiferencia > 0
-                          ? "text-emerald-700"
-                          : cierreDiferencia < 0
-                            ? "text-gray-900"
-                            : "text-gray-700"
-                    }`}
-                  >
-                    {cierreDiferencia === null ? "--" : formatMoney(cierreDiferencia)}
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                onClick={handleCierreCaja}
-                disabled={
-                  loadingAction || loadingEfectivoEnCaja || efectivoEnCaja === null || !cierreEfectivoContado.trim()
-                }
-                className="bg-gray-900 hover:bg-gray-800 text-white"
-              >
-                {loadingAction ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Cerrando caja...
-                  </>
-                ) : (
-                  "Cerrar caja"
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Apertura y Cierre
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-700 flex items-center gap-2">
-                  <Wallet className="w-4 h-4" />
-                  Apertura de caja
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Monto inicial</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={aperturaMonto}
-                    onChange={(e) => setAperturaMonto(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Fecha</label>
-                  <Input type="date" value={aperturaFecha} onChange={(e) => setAperturaFecha(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Notas (opcional)</label>
-                  <Textarea
-                    value={aperturaNota}
-                    onChange={(e) => setAperturaNota(e.target.value)}
-                    placeholder="Observaciones de apertura"
-                  />
-                </div>
-                <Button
-                  onClick={handleApertura}
-                  disabled={loadingAction}
-                  className="bg-gray-900 hover:bg-gray-800 text-white"
-                >
-                  Abrir caja
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-700 flex items-center gap-2">
-                  <Wallet className="w-4 h-4" />
-                  Cierre de caja
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Fecha</label>
-                  <Input type="date" value={cierreFecha} onChange={(e) => setCierreFecha(e.target.value)} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Efectivo contado</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={cierreEfectivoContado}
-                    onChange={(e) => setCierreEfectivoContado(e.target.value)}
-                    placeholder="0"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Monto físico contado en caja (debe ser mayor o igual a 0).
-                  </p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Notas (opcional)</label>
-                  <Textarea
-                    value={cierreNota}
-                    onChange={(e) => setCierreNota(e.target.value)}
-                    placeholder="Observaciones de cierre"
-                  />
-                </div>
-                <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-600">
-                  Balance estimado: <span className="font-semibold">{formatMoney(balanceCalculado)}</span>
-                </div>
-                <Button
-                  onClick={handleCierre}
-                  disabled={loadingAction}
-                  className="bg-gray-900 hover:bg-gray-800 text-white"
-                >
-                  Cerrar caja
-                </Button>
-              </CardContent>
-            </Card>
-          </div> */}
-
-          {/* Ingresos, egresos y cierres */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card className="border-gray-200 bg-gradient-to-br from-white via-gray-50 to-gray-100 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-700 flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Movimientos manuales
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-lg border border-gray-200 bg-white/70 p-4 shadow-sm">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Acción rápida</div>
-                  <p className="mt-2 text-sm text-gray-700">
-                    Registra ingresos o egresos manuales para reflejar ajustes de caja en tiempo real.
-                  </p>
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>Total ingresos manuales</span>
-                  <span className="font-semibold text-gray-700">{formatMoney(ingresosManualesTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>Total egresos del período</span>
-                  <span className="font-semibold text-gray-700">{formatMoney(egresosTotal)}</span>
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <Button
-                    onClick={() => setIngresoModalOpen(true)}
-                    className="bg-gray-900 hover:bg-gray-800 text-white w-full"
-                  >
-                    Registrar ingreso
-                  </Button>
-                  <Button
-                    onClick={() => setEgresoModalOpen(true)}
-                    className="w-full border border-black bg-white text-black hover:bg-gray-100 hover:text-black"
-                  >
-                    Registrar egreso
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-700">Listado de ingresos manuales</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingIngresos ? (
-                  <div className="text-sm text-gray-500">Cargando ingresos...</div>
-                ) : ingresos.length === 0 ? (
-                  <div className="text-sm text-gray-500">No hay ingresos manuales registrados.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {ingresos.map((ingreso) => (
-                      <div
-                        key={ingreso.id}
-                        className="flex items-center justify-between rounded-md border border-gray-200 p-3"
-                      >
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{ingreso.motivo}</div>
-                          <div className="text-xs text-gray-500">
-                            {formatDate(ingreso.fecha)} · {String(ingreso.metodo_pago || "otros").replace(/_/g, " ")}
-                          </div>
-                        </div>
-                        <div className="text-sm font-semibold text-emerald-700">
-                          {formatMoney(ingreso.monto)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-700">Listado de egresos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingEgresos ? (
-                  <div className="text-sm text-gray-500">Cargando egresos...</div>
-                ) : egresosOrdenados.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 p-4">
-                    <div className="text-sm font-medium text-gray-700">No hay egresos registrados</div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Cuando registres egresos, se mostrarán aquí ordenados por fecha más reciente.
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Card className="border-[#d7d4df] bg-white/80 shadow-[0_1px_2px_rgba(17,24,39,0.06)]">
+                  <CardContent className="space-y-2 p-4">
+                    <p className="text-sm text-[#656271]">Dinero recibido hoy</p>
+                    <p className="text-4xl font-semibold text-[#2e2d35]">
+                      {loadingResumen ? "..." : formatMoney(resumen.ingresos || 0)}
                     </p>
-                  </div>
-                ) : (
-                  <div className="overflow-hidden rounded-md border border-gray-200">
-                    <div className="hidden grid-cols-12 bg-gray-50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 md:grid">
-                      <div className="col-span-6">Motivo</div>
-                      <div className="col-span-3 text-right">Monto</div>
-                      <div className="col-span-2">Fecha</div>
-                      <div className="col-span-1 text-right">Acción</div>
-                    </div>
-                    <div className="divide-y divide-gray-200">
-                      {egresosOrdenados.map((egreso) => (
-                        <div key={egreso.id} className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-12 md:items-center">
-                          <div className="md:col-span-6">
-                            <div className="text-sm font-semibold text-gray-900">{egreso.motivo || "Sin motivo"}</div>
-                            <div className="mt-1 text-xs text-gray-500 md:hidden">{formatDate(egreso.fecha)}</div>
-                          </div>
-                          <div className="md:col-span-3 md:text-right">
-                            <div className="text-xs uppercase tracking-wide text-gray-500 md:hidden">Monto</div>
-                            <div className="text-base font-semibold text-gray-900">{formatMoney(egreso.monto)}</div>
-                          </div>
-                          <div className="md:col-span-2">
-                            <div className="text-xs uppercase tracking-wide text-gray-500 md:hidden">Fecha</div>
-                            <div className="text-sm text-gray-700">{formatDate(egreso.fecha)}</div>
-                          </div>
-                          <div className="flex justify-end md:col-span-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteEgreso(egreso.id)}
-                              aria-label="Eliminar egreso"
-                            >
-                              <Trash2 className="h-4 w-4 text-gray-500" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            <Card className="border-gray-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-700">Historial de cierres</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingCierres ? (
-                  <div className="text-sm text-gray-500">Cargando cierres...</div>
-                ) : cierres.length === 0 ? (
-                  <div className="text-sm text-gray-500">No hay cierres registrados.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {cierres.map((cierre) => (
-                      <div key={cierre.id} className="rounded-md border border-gray-200 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {formatDate(cierre.fecha_cierre || cierre.fecha_apertura)}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {cierre.notas || "Sin notas"}
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {cierre.estado ? `Estado: ${cierre.estado}` : ""}
-                          </div>
-                        </div>
-                        <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-gray-600">
-                          <div>Ingresos: {formatMoney(cierre.ingresos || 0)}</div>
-                          <div>Egresos: {formatMoney(cierre.egresos || 0)}</div>
-                          <div>Balance: {formatMoney(cierre.balance || 0)}</div>
-                        </div>
+                <Card className="border-[#d7d4df] bg-white/80 shadow-[0_1px_2px_rgba(17,24,39,0.06)]">
+                  <CardContent className="space-y-2 p-4">
+                    <p className="text-sm text-[#656271]">Abonos recibidos</p>
+                    <p className="text-4xl font-semibold text-[#2e2d35]">
+                      {loadingIngresos ? "..." : formatMoney(abonosTotal)}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[#d7d4df] bg-white/80 shadow-[0_1px_2px_rgba(17,24,39,0.06)]">
+                  <CardContent className="space-y-2 p-4">
+                    <p className="text-sm text-[#656271]">Egresos</p>
+                    <p className="text-4xl font-semibold text-[#2e2d35]">
+                      {loadingEgresos ? "..." : formatSignedMoney(-Math.abs(resumen.egresos || egresosTotal))}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[#d7d4df] bg-white/80 shadow-[0_1px_2px_rgba(17,24,39,0.06)]">
+                  <CardContent className="space-y-2 p-4">
+                    <p className="text-sm text-[#656271]">Efectivo en caja</p>
+                    <p className="text-4xl font-semibold text-[#2e2d35]">
+                      {loadingEfectivoEnCaja ? "..." : efectivoEnCaja === null ? "--" : formatMoney(efectivoEnCaja)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className="border-[#d7d4df] bg-white/80 shadow-none">
+                <CardHeader className="border-b border-[#e3e0ea] pb-3">
+                  <CardTitle className="text-2xl font-semibold text-[#2e2d35]">Saldos por medio de pago</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 gap-2 px-4 py-3 md:grid-cols-2 md:gap-4">
+                  <div className="space-y-1 md:border-r md:border-[#e3e0ea] md:pr-4">
+                    {saldosPorMedio.izquierda.map((item) => (
+                      <div
+                        key={`left-${item.label}`}
+                        className={`flex items-center justify-between gap-3 rounded-md px-2 py-1 ${
+                          item.total ? "bg-[#efedf5]" : ""
+                        }`}
+                      >
+                        <span className={`text-[#3c3946] ${item.total ? "text-2xl font-semibold" : "text-xl"}`}>
+                          {item.label}
+                        </span>
+                        <span className={`font-semibold text-[#2e2d35] ${item.total ? "text-3xl" : "text-2xl"}`}>
+                          {item.trend ? formatTrendMoney(item.value) : formatMoney(item.value)}
+                        </span>
                       </div>
                     ))}
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
 
-          <Dialog open={ingresoModalOpen} onOpenChange={setIngresoModalOpen}>
-            <DialogContent className="max-w-lg overflow-hidden border-gray-200 bg-white p-0">
-              <div className="bg-white px-6 py-5">
-                <DialogHeader className="space-y-1 text-left">
-                  <DialogTitle className="text-lg font-semibold">Registrar ingreso</DialogTitle>
-                  <DialogDescription className="text-gray-600">
-                    Completa los datos para guardar el ingreso manual en la caja de la sede.
-                  </DialogDescription>
-                </DialogHeader>
-              </div>
+                  <div className="space-y-1">
+                    {saldosPorMedio.derecha.map((item) => (
+                      <div key={`right-${item.label}`} className="flex items-center justify-between gap-3 rounded-md px-2 py-1">
+                        <span className="text-xl text-[#3c3946]">{item.label}</span>
+                        <span className="text-2xl font-semibold text-[#2e2d35]">
+                          {item.trend ? formatTrendMoney(item.value) : formatMoney(item.value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="space-y-4 px-6 py-5">
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Monto</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={ingresoMonto}
-                    onChange={(e) => setIngresoMonto(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Card className="border-[#d7d4df] bg-white/80 shadow-none">
+                <CardHeader className="border-b border-[#e3e0ea] pb-2">
+                  <CardTitle className="text-2xl font-semibold text-[#2e2d35]">Cierre de caja</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 gap-3 pt-4 md:grid-cols-4">
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Método de pago</label>
-                    <select
-                      value={ingresoMetodoPago}
-                      onChange={(e) => setIngresoMetodoPago(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="efectivo">Efectivo</option>
-                      <option value="tarjeta_credito">Tarjeta crédito</option>
-                      <option value="tarjeta_debito">Tarjeta débito</option>
-                      <option value="pos">POS</option>
-                      <option value="transferencia">Transferencia</option>
-                      <option value="link_de_pago">Link de pago</option>
-                      <option value="giftcard">Giftcard</option>
-                      <option value="addi">Addi</option>
-                      <option value="abonos">Abonos</option>
-                      <option value="otros">Otros</option>
-                    </select>
+                    <label className="text-xs font-medium text-[#666370]">Fecha de cierre</label>
+                    <Input type="date" value={cierreFecha} onChange={(e) => setCierreFecha(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Motivo</label>
+                    <label className="text-xs font-medium text-[#666370]">Efectivo contado</label>
                     <Input
-                      value={ingresoMotivo}
-                      onChange={(e) => setIngresoMotivo(e.target.value)}
-                      placeholder="Ej: ajuste de caja"
+                      type="number"
+                      min="0"
+                      value={cierreEfectivoContado}
+                      onChange={(e) => setCierreEfectivoContado(e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-gray-600">Fecha</label>
-                    <Input type="date" value={ingresoFecha} onChange={(e) => setIngresoFecha(e.target.value)} />
+                    <label className="text-xs font-medium text-[#666370]">Observaciones (opcional)</label>
+                    <Input value={cierreNota} onChange={(e) => setCierreNota(e.target.value)} />
                   </div>
-                </div>
-              </div>
-
-              <DialogFooter className="border-t border-gray-100 bg-gray-50 px-6 py-4">
-                <Button variant="outline" onClick={() => setIngresoModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleCreateIngreso}
-                  disabled={loadingAction}
-                  className="bg-gray-900 hover:bg-gray-800 text-white"
-                >
-                  Guardar ingreso
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={egresoModalOpen} onOpenChange={setEgresoModalOpen}>
-            <DialogContent className="max-w-lg overflow-hidden border-gray-200 bg-white p-0">
-              <div className="bg-white px-6 py-5">
-                <DialogHeader className="space-y-1 text-left">
-                  <DialogTitle className="text-lg font-semibold">Registrar egreso</DialogTitle>
-                  <DialogDescription className="text-gray-600">
-                    Completa los datos para guardar el egreso en la caja de la sede.
-                  </DialogDescription>
-                </DialogHeader>
-              </div>
-
-              <div className="space-y-4 px-6 py-5">
-                <div>
-                  <label className="text-xs font-medium text-gray-600">Monto</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={egresoMonto}
-                    onChange={(e) => setEgresoMonto(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">Método de pago</label>
-                    <select
-                      value={egresoMetodoPago}
-                      onChange={(e) => setEgresoMetodoPago(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  <div className="flex flex-col justify-end gap-2">
+                    <div className="rounded-md border border-[#ddd9e6] bg-[#f2f0f7] p-2 text-xs text-[#4b4857]">
+                      <div className="flex items-center justify-between">
+                        <span>Diferencia</span>
+                        <span
+                          className={`font-semibold ${
+                            cierreDiferencia === null
+                              ? "text-[#4b4857]"
+                              : cierreDiferencia > 0
+                                ? "text-emerald-700"
+                                : "text-[#2e2d35]"
+                          }`}
+                        >
+                          {cierreDiferencia === null ? "--" : formatMoney(cierreDiferencia)}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleCierreCaja}
+                      disabled={
+                        loadingAction || loadingEfectivoEnCaja || efectivoEnCaja === null || !cierreEfectivoContado.trim()
+                      }
+                      className="w-full bg-[#6b6878] text-white hover:bg-[#5e5b6d]"
                     >
-                      <option value="efectivo">Efectivo</option>
-                      <option value="tarjeta_credito">Tarjeta crédito</option>
-                      <option value="tarjeta_debito">Tarjeta débito</option>
-                      <option value="pos">POS</option>
-                      <option value="transferencia">Transferencia</option>
-                      <option value="link_de_pago">Link de pago</option>
-                      <option value="giftcard">Giftcard</option>
-                      <option value="addi">Addi</option>
-                      <option value="abonos">Abonos</option>
-                      <option value="otros">Otros</option>
-                    </select>
+                      {loadingAction ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Cerrando caja...
+                        </>
+                      ) : (
+                        "Cerrar caja"
+                      )}
+                    </Button>
                   </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">Tipo</label>
-                    <select
-                      value={egresoTipo}
-                      onChange={(e) => setEgresoTipo(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="compra_interna">Compra interna</option>
-                      <option value="gasto_operativo">Gasto operativo</option>
-                      <option value="retiro_caja">Retiro de caja</option>
-                      <option value="otro">Otro</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">Motivo *</label>
-                    <Input
-                      value={egresoMotivo}
-                      onChange={(e) => {
-                        setEgresoMotivo(e.target.value);
-                        if (error && e.target.value.trim()) {
-                          setError(null);
-                        }
-                      }}
-                      placeholder="Ej: compra insumos"
-                    />
-                    {!egresoMotivo.trim() ? (
-                      <p className="mt-1 text-xs font-semibold text-gray-900">El motivo del egreso es obligatorio.</p>
+                </CardContent>
+              </Card>
+
+              {reporteResumen ? (
+                <Card className="border-[#d7d4df] bg-white/80 shadow-none">
+                  <CardHeader className="border-b border-[#e3e0ea] pb-2">
+                    <CardTitle className="text-2xl font-semibold text-[#2e2d35]">Reporte del cierre</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-4">
+                    <p className="text-sm text-[#666370]">
+                      Período: {formatDate(reporteResumen.inicio)} - {formatDate(reporteResumen.fin)}
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-md border border-[#e2deea] bg-[#f3f1f8] p-3">
+                        <p className="text-xs text-[#666370]">Ingresos</p>
+                        <p className="text-lg font-semibold text-[#2e2d35]">{formatMoney(reporteResumen.ingresos)}</p>
+                      </div>
+                      <div className="rounded-md border border-[#e2deea] bg-[#f3f1f8] p-3">
+                        <p className="text-xs text-[#666370]">Egresos</p>
+                        <p className="text-lg font-semibold text-[#2e2d35]">{formatSignedMoney(-Math.abs(reporteResumen.egresos))}</p>
+                      </div>
+                      <div className="rounded-md border border-[#e2deea] bg-[#f3f1f8] p-3">
+                        <p className="text-xs text-[#666370]">Neto</p>
+                        <p className="text-lg font-semibold text-[#2e2d35]">{formatMoney(reporteResumen.neto)}</p>
+                      </div>
+                      <div className="rounded-md border border-[#e2deea] bg-[#f3f1f8] p-3">
+                        <p className="text-xs text-[#666370]">Diferencias</p>
+                        <p className="text-lg font-semibold text-[#2e2d35]">{formatMoney(reporteResumen.diferencias)}</p>
+                      </div>
+                    </div>
+
+                    {reporteResumen.cierres.length > 0 ? (
+                      <div className="rounded-md border border-[#e2deea] bg-[#f8f7fc] p-3 text-sm text-[#44414f]">
+                        Último cierre: {String(reporteResumen.cierres[0]?.cierre_id || "--")} | Estado: {" "}
+                        {String(reporteResumen.cierres[0]?.estado || "--")}
+                      </div>
                     ) : null}
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">Fecha</label>
-                    <Input type="date" value={egresoFecha} onChange={(e) => setEgresoFecha(e.target.value)} />
-                  </div>
-                </div>
+
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        onClick={handleDescargarReporte}
+                        disabled={descargandoReporte}
+                        className="bg-[#6b6878] text-white hover:bg-[#5e5b6d]"
+                      >
+                        {descargandoReporte ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Descargando...
+                          </>
+                        ) : (
+                          "Descargar reporte Excel"
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card className="border-[#d7d4df] bg-white/80 shadow-none">
+                  <CardHeader className="border-b border-[#e3e0ea] pb-2">
+                    <CardTitle className="text-2xl font-semibold text-[#2e2d35]">Registrar egreso</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-4">
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-base text-[#666370]">Concepto</label>
+                          <Input
+                            value={egresoMotivo}
+                            onChange={(e) => {
+                              setEgresoMotivo(e.target.value);
+                              if (error && e.target.value.trim()) setError(null);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-base text-[#666370]">Cantidad</label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={egresoMonto}
+                            onChange={(e) => setEgresoMonto(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-xs font-medium text-[#666370]">Método de pago</label>
+                          <select
+                            value={egresoMetodoPago}
+                            onChange={(e) => setEgresoMetodoPago(e.target.value)}
+                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <option value="efectivo">Efectivo</option>
+                            <option value="tarjeta_credito">Tarjeta crédito</option>
+                            <option value="tarjeta_debito">Tarjeta débito</option>
+                            <option value="pos">POS</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="link_de_pago">Link de pago</option>
+                            <option value="giftcard">Giftcard</option>
+                            <option value="addi">Addi</option>
+                            <option value="abonos">Abonos</option>
+                            <option value="otros">Otros</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-[#666370]">Tipo</label>
+                          <select
+                            value={egresoTipo}
+                            onChange={(e) => setEgresoTipo(e.target.value)}
+                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <option value="compra_interna">Compra interna</option>
+                            <option value="gasto_operativo">Gasto operativo</option>
+                            <option value="retiro_caja">Retiro de caja</option>
+                            <option value="otro">Otro</option>
+                          </select>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="text-xs font-medium text-[#666370]">Fecha</label>
+                          <Input type="date" value={egresoFecha} onChange={(e) => setEgresoFecha(e.target.value)} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 border-t border-[#e4e1eb] pt-3">
+                      <Button variant="outline" onClick={resetEgresoForm} className="min-w-24">
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={handleCreateEgreso}
+                        disabled={loadingAction || !egresoMotivo.trim()}
+                        className="min-w-24 bg-[#6b6878] text-white hover:bg-[#5e5b6d]"
+                      >
+                        Guardar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-[#d7d4df] bg-white/80 shadow-none">
+                  <CardHeader className="border-b border-[#e3e0ea] pb-2">
+                    <CardTitle className="text-2xl font-semibold text-[#2e2d35]">Registrar ingreso manual</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-4">
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="text-base text-[#666370]">Concepto</label>
+                          <Input
+                            value={ingresoMotivo}
+                            onChange={(e) => {
+                              setIngresoMotivo(e.target.value);
+                              if (error && e.target.value.trim()) setError(null);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-base text-[#666370]">Cantidad</label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={ingresoMonto}
+                            onChange={(e) => setIngresoMonto(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-[#666370]">Fecha</label>
+                        <Input type="date" value={ingresoFecha} onChange={(e) => setIngresoFecha(e.target.value)} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 border-t border-[#e4e1eb] pt-3">
+                      <Button variant="outline" onClick={resetIngresoForm} className="min-w-24">
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={handleCreateIngreso}
+                        disabled={loadingAction}
+                        className="min-w-24 bg-[#6b6878] text-white hover:bg-[#5e5b6d]"
+                      >
+                        Guardar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
 
-              <DialogFooter className="border-t border-gray-100 bg-gray-50 px-6 py-4">
-                <Button variant="outline" onClick={() => setEgresoModalOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleCreateEgreso}
-                  disabled={loadingAction || !egresoMotivo.trim()}
-                  className="bg-gray-900 hover:bg-gray-800 text-white"
-                >
-                  Guardar egreso
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
+              <Card className="border-[#d7d4df] bg-white/80 shadow-none">
+                <CardHeader className="border-b border-[#e3e0ea] pb-2">
+                  <CardTitle className="text-2xl font-semibold text-[#2e2d35]">Movimientos del día</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="overflow-x-auto rounded-md border border-[#dcd9e6]">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-[#eeebf4] text-left text-sm font-medium text-[#5f5c69]">
+                        <tr>
+                          <th className="px-3 py-2">Hora</th>
+                          <th className="px-3 py-2">Tipo</th>
+                          <th className="px-3 py-2">Concepto</th>
+                          <th className="px-3 py-2">Medio</th>
+                          <th className="px-3 py-2 text-right">Monto</th>
+                          <th className="px-3 py-2 text-right">Efectivo esperado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#ece9f2] text-[#3d3a46]">
+                        {loadingIngresos || loadingEgresos ? (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-6 text-center text-sm text-[#6b6878]">
+                              Cargando movimientos...
+                            </td>
+                          </tr>
+                        ) : movimientosConSaldo.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-6 text-center text-sm text-[#6b6878]">
+                              No hay movimientos registrados para el día.
+                            </td>
+                          </tr>
+                        ) : (
+                          movimientosConSaldo.map((movimiento) => (
+                            <tr key={movimiento.id}>
+                              <td className="px-3 py-2 font-medium text-[#2e2d35]">{movimiento.hora}</td>
+                              <td className="px-3 py-2">
+                                <span
+                                  className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                                    movimiento.tipo === "egreso"
+                                      ? "bg-[#e9e6f0] text-[#4c4958]"
+                                      : "bg-[#efedf5] text-[#4f4b5d]"
+                                  }`}
+                                >
+                                  {movimiento.etiquetaTipo}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">{movimiento.detalle}</td>
+                              <td className="px-3 py-2">{movimiento.medio}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-[#2e2d35]">
+                                {formatSignedMoney(movimiento.monto)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-semibold text-[#2e2d35]">
+                                {formatMoney(movimiento.saldo_esperado)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </section>
+          </div>
         </div>
       </main>
     </div>

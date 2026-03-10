@@ -29,6 +29,7 @@ class UserResponse(BaseModel):
     nombre: str
     correo_electronico: str
     rol: str
+    profesional_id: Optional[str] = None
     sede_id: Optional[str] = None
     franquicia_id: Optional[str] = None
     activo: bool
