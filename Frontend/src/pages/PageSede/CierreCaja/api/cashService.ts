@@ -1,18 +1,12 @@
 import { API_BASE_URL } from "../../../../types/config";
 import { normalizeBackendDateParams } from "../../../../lib/dateFormat";
+import { getActiveSedeIdFromStorage } from "../../../../lib/sede-context";
 
 const getToken = (): string | null => {
   return sessionStorage.getItem("access_token") || localStorage.getItem("access_token");
 };
 
-const getActiveSedeId = (): string | null => {
-  const sedeId =
-    sessionStorage.getItem("beaux-sede_id") ||
-    localStorage.getItem("beaux-sede_id") ||
-    "";
-  const normalized = String(sedeId).trim();
-  return normalized.length > 0 ? normalized : null;
-};
+const getActiveSedeId = (): string | null => getActiveSedeIdFromStorage();
 
 const getHeaders = (): HeadersInit => {
   const token = getToken();

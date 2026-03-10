@@ -1,5 +1,5 @@
 export type SystemUserRole =
-  | "superadmin"
+  | "super_admin"
   | "admin_sede"
   | "recepcionista"
   | "call_center";
@@ -10,6 +10,8 @@ export interface SystemUser {
   email: string;
   role: SystemUserRole;
   sede_id?: string | null;
+  sede_id_principal?: string | null;
+  sedes_permitidas?: string[];
   sede_nombre?: string | null;
   especialidades?: string[];
   activo: boolean;
@@ -23,6 +25,7 @@ export interface CreateSystemUserPayload {
   email: string;
   role: SystemUserRole;
   sede_id?: string | null;
+  sedes_permitidas?: string[];
   especialidades?: string[];
   password?: string;
   activo?: boolean;
