@@ -68,6 +68,15 @@ const isServiceItem = (item: ItemFactura) => {
   return tipo.includes("servicio") || tipo.includes("service") || Boolean(item.servicio_id);
 };
 
+const isWithinRange = (iso: string | undefined, range: DateRange) => {
+  if (!iso) return false;
+  const ts = new Date(iso).getTime();
+  const startTs = new Date(range.start).getTime();
+  const endTs = new Date(range.end).getTime();
+  if (Number.isNaN(ts) || Number.isNaN(startTs) || Number.isNaN(endTs)) return false;
+  return ts >= startTs && ts <= endTs + 24 * 60 * 60 * 1000 - 1; // inclusive end-day
+};
+
 const getItemSubtotal = (item: ItemFactura): number => {
   if (typeof item.subtotal === "number") return item.subtotal;
   if (typeof item.precio_unitario === "number" && typeof item.cantidad === "number") {
@@ -266,11 +275,19 @@ export default function StylistReportsPage() {
     loadInvoices();
   }, [activeSedeId, professionalId, range.end, range.start, user?.sede_id, user?.sede_id_principal]);
 
+  const filteredInvoices = useMemo(
+    () =>
+      invoices.filter((invoice) =>
+        isWithinRange(invoice.fecha_pago || invoice.fecha_comprobante || "", range)
+      ),
+    [invoices, range]
+  );
+
   const filteredItems = useMemo(() => {
     if (manualRows) return manualRows;
     if (!professionalId) return [];
 
-    return invoices.flatMap((invoice) => {
+    return filteredInvoices.flatMap((invoice) => {
       const belongsToPro =
         invoice.profesional_id &&
         String(invoice.profesional_id).trim().toLowerCase() ===
@@ -334,7 +351,7 @@ export default function StylistReportsPage() {
         serviciosMap.set(name, prev + (row.valor || 0));
       });
     } else {
-      invoices.forEach((invoice) => {
+      filteredInvoices.forEach((invoice) => {
         const items = Array.isArray(invoice.items) ? invoice.items : [];
         const belongsToPro =
           invoice.profesional_id &&
