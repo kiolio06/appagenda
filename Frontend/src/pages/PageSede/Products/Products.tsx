@@ -531,20 +531,14 @@ export function ProductsList() {
                                 <div className="rounded-xl bg-gray-100 p-2.5">
                                   <Package className="h-4 w-4 text-gray-600" />
                                 </div>
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <h3 className="truncate text-sm font-semibold text-gray-900">{nombreProducto}</h3>
-                                    {producto.producto_codigo && (
-                                      <Badge variant="outline" className="border-gray-200 bg-white text-gray-600">
-                                        {producto.producto_codigo}
-                                      </Badge>
-                                    )}
-                                  </div>
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className="truncate text-sm font-semibold text-gray-900">{nombreProducto}</h3>
+                                </div>
 
-                                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                                    <span>ID: {producto.producto_id}</span>
-                                    <span>Categoría: {producto.categoria || "Sin categoría"}</span>
-                                    <span>Stock mínimo: {producto.stock_minimo}</span>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                                  <span>Categoría: {producto.categoria || "Sin categoría"}</span>
+                                  <span>Stock mínimo: {producto.stock_minimo}</span>
                                     <span>Actualizado: {formatDateDMY(producto.fecha_ultima_actualizacion, "—")}</span>
                                   </div>
                                 </div>
