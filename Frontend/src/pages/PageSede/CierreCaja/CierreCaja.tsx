@@ -301,11 +301,13 @@ export default function CierreCajaPage() {
   const [ingresoMetodoPago, setIngresoMetodoPago] = useState<string>(DEFAULT_CASH_PAYMENT_METHOD);
   const [ingresoTipo, setIngresoTipo] = useState<string>(DEFAULT_CASH_INCOME_TYPE);
   const [ingresoMotivo, setIngresoMotivo] = useState("");
+  const [ingresoMotivoEdicion, setIngresoMotivoEdicion] = useState("");
   const [ingresoFecha, setIngresoFecha] = useState(getToday());
   const [editingIngresoId, setEditingIngresoId] = useState<string | null>(null);
 
   const [egresoMonto, setEgresoMonto] = useState("");
   const [egresoMotivo, setEgresoMotivo] = useState("");
+  const [egresoMotivoEdicion, setEgresoMotivoEdicion] = useState("");
   const [egresoFecha, setEgresoFecha] = useState(getToday());
   const [egresoMetodoPago, setEgresoMetodoPago] = useState<string>(DEFAULT_CASH_PAYMENT_METHOD);
   const [egresoTipo, setEgresoTipo] = useState<string>(DEFAULT_CASH_EXPENSE_TYPE);
@@ -842,23 +844,21 @@ export default function CierreCajaPage() {
       return;
     }
 
+    const motivoEdicionIngreso = ingresoMotivoEdicion.trim();
+    if (isEditing && !motivoEdicionIngreso) {
+      setError("Debes especificar el motivo de la edición del ingreso para auditoría.");
+      return;
+    }
+
     setLoadingAction(true);
     setActiveAction("ingreso");
     setError(null);
     setSuccess(null);
 
     try {
-      if (isEditing && editingIngresoId) {
-        try {
-          await cashService.deleteIngreso(editingIngresoId, { sede_id: sedeId });
-        } catch (deleteErr: any) {
-          console.warn("No se pudo eliminar ingreso previo, se continuará con la creación:", deleteErr);
-        }
-      }
-
       const fechaIngresoDMY = formatDateDMY(ingresoFecha);
 
-      await cashService.createIngreso({
+      const payloadIngreso = {
         sede_id: sedeId,
         monto: montoValue,
         tipo: ingresoTipo,
@@ -866,9 +866,18 @@ export default function CierreCajaPage() {
         motivo: ingresoMotivo.trim(),
         fecha: fechaIngresoDMY,
         moneda: monedaSede,
-      });
+      };
 
-      const ingresoRegistradoId = String(editingIngresoId || `tmp-ingreso-${Date.now()}`);
+      const responseIngreso = isEditing && editingIngresoId
+        ? await cashService.updateIngreso(editingIngresoId, {
+            ...payloadIngreso,
+            motivo_edicion: motivoEdicionIngreso,
+          })
+        : await cashService.createIngreso(payloadIngreso);
+
+      const ingresoRegistradoId = String(
+        responseIngreso?.ingreso_id || responseIngreso?.id || editingIngresoId || `tmp-ingreso-${Date.now()}`
+      );
       setIngresos((prev) => {
         const nuevoIngreso: CashIngreso = {
           id: ingresoRegistradoId,
@@ -879,7 +888,8 @@ export default function CierreCajaPage() {
           tipo: ingresoTipo,
           metodo_pago: ingresoMetodoPago,
           fecha: ingresoFecha,
-          creado_en: new Date().toISOString(),
+          creado_en: responseIngreso?.creado_en || new Date().toISOString(),
+          motivo_edicion: isEditing ? motivoEdicionIngreso : undefined,
         };
         const filtered = isEditing
           ? prev.filter((item) => String(item.id) !== String(editingIngresoId))
@@ -914,6 +924,7 @@ export default function CierreCajaPage() {
     setEditingEgresoId(String(target.id));
     setEgresoMonto(String(Math.abs(target.monto || 0)));
     setEgresoMotivo(target.concepto || target.motivo || "");
+    setEgresoMotivoEdicion("");
     setEgresoMetodoPago(target.metodo_pago || DEFAULT_CASH_PAYMENT_METHOD);
     setEgresoTipo(target.tipo || DEFAULT_CASH_EXPENSE_TYPE);
     setEgresoFecha(toBackendDate(target.fecha || target.creado_en || getToday()));
@@ -931,6 +942,7 @@ export default function CierreCajaPage() {
     setEditingIngresoId(String(target.id));
     setIngresoMonto(String(Math.abs(target.monto || 0)));
     setIngresoMotivo(target.concepto || target.motivo || "");
+    setIngresoMotivoEdicion("");
     setIngresoMetodoPago(target.metodo_pago || DEFAULT_CASH_PAYMENT_METHOD);
     setIngresoTipo(target.tipo || DEFAULT_CASH_INCOME_TYPE);
     setIngresoFecha(toBackendDate(target.fecha || target.creado_en || getToday()));
@@ -946,6 +958,7 @@ export default function CierreCajaPage() {
 
     const montoValue = toNumber(egresoMonto);
     const motivo = egresoMotivo.trim();
+    const motivoEdicion = egresoMotivoEdicion.trim();
     const isEditing = Boolean(editingEgresoId);
 
     if (!montoValue || montoValue <= 0) {
@@ -958,19 +971,20 @@ export default function CierreCajaPage() {
       return;
     }
 
+    if (isEditing && !motivoEdicion) {
+      setError("Debes especificar el motivo de la edición para trazabilidad.");
+      return;
+    }
+
     setLoadingAction(true);
     setActiveAction("egreso");
     setError(null);
     setSuccess(null);
 
     try {
-      if (isEditing && editingEgresoId) {
-        await cashService.deleteEgreso(editingEgresoId, { sede_id: sedeId });
-      }
-
       const fechaEgresoDMY = formatDateDMY(egresoFecha);
 
-      const response = await cashService.createEgreso({
+      const payloadBase = {
         sede_id: sedeId,
         monto: montoValue,
         valor: montoValue,
@@ -983,7 +997,14 @@ export default function CierreCajaPage() {
         concepto: motivo,
         fecha: fechaEgresoDMY,
         moneda: monedaSede,
-      });
+      };
+
+      const response = isEditing && editingEgresoId
+        ? await cashService.updateEgreso(editingEgresoId, {
+            ...payloadBase,
+            motivo_edicion: motivoEdicion,
+          })
+        : await cashService.createEgreso(payloadBase);
 
       const egresoRegistradoId = String(
         response?.egreso_id || response?.id || editingEgresoId || `tmp-egreso-${Date.now()}`
@@ -1000,6 +1021,7 @@ export default function CierreCajaPage() {
           metodo_pago: egresoMetodoPago,
           fecha: egresoFecha,
           creado_en: response?.creado_en || new Date().toISOString(),
+          motivo_edicion: motivoEdicion || undefined,
         };
 
         const filtered = isEditing
@@ -1430,6 +1452,7 @@ export default function CierreCajaPage() {
     setIngresoMetodoPago(DEFAULT_CASH_PAYMENT_METHOD);
     setIngresoTipo(DEFAULT_CASH_INCOME_TYPE);
     setIngresoMotivo("");
+    setIngresoMotivoEdicion("");
     setIngresoFecha(getToday());
     setError(null);
   };
@@ -1438,6 +1461,7 @@ export default function CierreCajaPage() {
     setEditingEgresoId(null);
     setEgresoMonto("");
     setEgresoMotivo("");
+    setEgresoMotivoEdicion("");
     setEgresoMetodoPago(DEFAULT_CASH_PAYMENT_METHOD);
     setEgresoTipo(DEFAULT_CASH_EXPENSE_TYPE);
     setEgresoFecha(getToday());
@@ -1843,8 +1867,8 @@ export default function CierreCajaPage() {
                   ) : null}
                 </CardHeader>
                 <CardContent className="space-y-4 pt-4">
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                           <label className="text-base text-[#666370]">Concepto</label>
                           <Input
@@ -1900,6 +1924,22 @@ export default function CierreCajaPage() {
                           <Input type="date" value={egresoFecha} onChange={(e) => setEgresoFecha(e.target.value)} />
                         </div>
                       </div>
+
+                      {isEditingEgreso ? (
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-[#666370]">
+                            Motivo de edición (obligatorio para auditoría)
+                          </label>
+                          <Input
+                            value={egresoMotivoEdicion}
+                            onChange={(e) => {
+                              setEgresoMotivoEdicion(e.target.value);
+                              if (error && e.target.value.trim()) setError(null);
+                            }}
+                            placeholder="Ej: Corrección de monto, ajuste de método de pago, error de digitación..."
+                          />
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="flex items-center justify-end gap-2 border-t border-[#e4e1eb] pt-3">
@@ -1908,7 +1948,11 @@ export default function CierreCajaPage() {
                       </Button>
                       <Button
                         onClick={handleCreateEgreso}
-                        disabled={loadingAction || !egresoMotivo.trim()}
+                        disabled={
+                          loadingAction ||
+                          !egresoMotivo.trim() ||
+                          (isEditingEgreso && !egresoMotivoEdicion.trim())
+                        }
                         className="min-w-24 bg-[#6b6878] text-white hover:bg-[#5e5b6d]"
                       >
                         {loadingAction && activeAction === "egreso" ? (
@@ -1993,6 +2037,22 @@ export default function CierreCajaPage() {
                           <Input type="date" value={ingresoFecha} onChange={(e) => setIngresoFecha(e.target.value)} />
                         </div>
                       </div>
+
+                      {editingIngresoId ? (
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-[#666370]">
+                            Motivo de edición (obligatorio para auditoría)
+                          </label>
+                          <Input
+                            value={ingresoMotivoEdicion}
+                            onChange={(e) => {
+                              setIngresoMotivoEdicion(e.target.value);
+                              if (error && e.target.value.trim()) setError(null);
+                            }}
+                            placeholder="Ej: Corrección de monto, método de pago, error de digitación..."
+                          />
+                        </div>
+                      ) : null}
                     </div>
 
                       <div className="flex items-center justify-end gap-2 border-t border-[#e4e1eb] pt-3">
@@ -2001,7 +2061,11 @@ export default function CierreCajaPage() {
                         </Button>
                         <Button
                           onClick={handleCreateIngreso}
-                          disabled={loadingAction}
+                          disabled={
+                            loadingAction ||
+                            !ingresoMotivo.trim() ||
+                            (Boolean(editingIngresoId) && !ingresoMotivoEdicion.trim())
+                          }
                           className="min-w-24 bg-[#6b6878] text-white hover:bg-[#5e5b6d]"
                         >
                           {loadingAction && activeAction === "ingreso" ? (
