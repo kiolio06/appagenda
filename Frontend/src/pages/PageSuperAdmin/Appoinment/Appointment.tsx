@@ -197,103 +197,131 @@ const CalendarScheduler: React.FC = () => {
     setShowAppointmentDetails(true);
   }, []);
 
+  type EstadoCategoria = 'agendada' | 'finalizado' | 'facturado' | 'cancelado' | 'no_show' | 'default';
+
+  const ESTADO_STYLE_MAP: Record<EstadoCategoria, {
+    label: string;
+    solidBg: string;
+    selectedBg: string;
+    hover: string;
+    border: string;
+    icon: string;
+    chipBg: string;
+    chipText: string;
+    chipDot: string;
+  }> = {
+    agendada: {
+      label: 'Agendada / Confirmada',
+      solidBg: 'bg-green-500',
+      selectedBg: 'bg-green-400',
+      hover: 'hover:bg-green-600',
+      border: 'border-green-600',
+      icon: '✓',
+      chipBg: 'bg-green-100',
+      chipText: 'text-green-700',
+      chipDot: 'bg-green-500',
+    },
+    finalizado: {
+      label: 'Finalizado',
+      solidBg: 'bg-orange-500',
+      selectedBg: 'bg-orange-400',
+      hover: 'hover:bg-orange-600',
+      border: 'border-orange-600',
+      icon: '✓',
+      chipBg: 'bg-orange-100',
+      chipText: 'text-orange-800',
+      chipDot: 'bg-orange-500',
+    },
+    facturado: {
+      label: 'Facturado',
+      solidBg: 'bg-gray-500',
+      selectedBg: 'bg-gray-400',
+      hover: 'hover:bg-gray-600',
+      border: 'border-gray-600',
+      icon: '💵',
+      chipBg: 'bg-gray-100',
+      chipText: 'text-gray-700',
+      chipDot: 'bg-gray-500',
+    },
+    cancelado: {
+      label: 'Cancelado',
+      solidBg: 'bg-red-500',
+      selectedBg: 'bg-red-400',
+      hover: 'hover:bg-red-600',
+      border: 'border-red-600',
+      icon: '✗',
+      chipBg: 'bg-red-100',
+      chipText: 'text-red-700',
+      chipDot: 'bg-red-500',
+    },
+    no_show: {
+      label: 'No asistió',
+      solidBg: 'bg-yellow-500',
+      selectedBg: 'bg-yellow-400',
+      hover: 'hover:bg-yellow-600',
+      border: 'border-yellow-600',
+      icon: '⚠',
+      chipBg: 'bg-yellow-100',
+      chipText: 'text-yellow-800',
+      chipDot: 'bg-yellow-500',
+    },
+    default: {
+      label: 'Agendada',
+      solidBg: 'bg-green-500',
+      selectedBg: 'bg-green-400',
+      hover: 'hover:bg-green-600',
+      border: 'border-green-600',
+      icon: '•',
+      chipBg: 'bg-green-100',
+      chipText: 'text-green-700',
+      chipDot: 'bg-green-500',
+    },
+  };
+
+  const resolveEstadoCategoria = (estado: string): EstadoCategoria => {
+    const value = (estado || '').toLowerCase().trim();
+
+    if (value.includes('cancel')) return 'cancelado';
+    if (value.includes('factur')) return 'facturado';
+    if (
+      value.includes('no asist') ||
+      value.includes('no_asist') ||
+      value.includes('no-show') ||
+      value.includes('no_show')
+    ) return 'no_show';
+    if (['finalizado', 'finalizada', 'completado', 'completada', 'terminado', 'terminada', 'realizado', 'realizada'].some(flag => value.includes(flag))) {
+      return 'finalizado';
+    }
+    if (['confirmada', 'confirmado', 'agendada', 'agendado', 'reservada', 'reservado', 'pendiente', 'en proceso', 'en_proceso', 'proceso'].some(flag => value.includes(flag))) {
+      return 'agendada';
+    }
+    return 'default';
+  };
+
+  const getEstadoTokens = (estado: string) => {
+    const key = resolveEstadoCategoria(estado);
+    const palette = ESTADO_STYLE_MAP[key] || ESTADO_STYLE_MAP.default;
+    return { key, ...palette };
+  };
+
   // MISMA FUNCIÓN DE ESTILOS QUE EN SEDE
   const getCitaStyles = (estado: string, isSelected: boolean = false) => {
-    const estadoLower = estado?.toLowerCase() || 'pendiente';
-
-    let baseStyles;
-
-    switch (estadoLower) {
-      case 'confirmada':
-      case 'confirmado':
-        baseStyles = {
-          bg: 'bg-green-500',
-          hover: 'hover:bg-green-600',
-          border: 'border-green-600',
-          text: 'text-white',
-          badge: 'bg-green-700',
-          icon: '✓',
-          shadow: 'shadow-sm'
-        };
-        break;
-
-      case 'reservada':
-      case 'reservado':
-      case 'pendiente':
-        baseStyles = {
-          bg: 'bg-blue-500',
-          hover: 'hover:bg-blue-600',
-          border: 'border-blue-600',
-          text: 'text-white',
-          badge: 'bg-blue-700',
-          icon: '⏱️',
-          shadow: 'shadow-sm'
-        };
-        break;
-
-      case 'en proceso':
-      case 'en_proceso':
-      case 'proceso':
-        baseStyles = {
-          bg: 'bg-purple-500',
-          hover: 'hover:bg-purple-600',
-          border: 'border-purple-600',
-          text: 'text-white',
-          badge: 'bg-purple-700',
-          icon: '⚡',
-          shadow: 'shadow-sm'
-        };
-        break;
-
-      case 'cancelada':
-      case 'cancelado':
-        baseStyles = {
-          bg: 'bg-red-500',
-          hover: 'hover:bg-red-600',
-          border: 'border-red-600',
-          text: 'text-white',
-          badge: 'bg-red-700',
-          icon: '✗',
-          shadow: 'shadow-sm'
-        };
-        break;
-
-      case 'finalizada':
-      case 'completada':
-      case 'completado':
-        baseStyles = {
-          bg: 'bg-gray-500',
-          hover: 'hover:bg-gray-600',
-          border: 'border-gray-600',
-          text: 'text-white',
-          badge: 'bg-gray-700',
-          icon: '✓',
-          shadow: 'shadow-sm'
-        };
-        break;
-
-      default:
-        baseStyles = {
-          bg: 'bg-amber-500',
-          hover: 'hover:bg-amber-600',
-          border: 'border-amber-600',
-          text: 'text-white',
-          badge: 'bg-amber-700',
-          icon: '?',
-          shadow: 'shadow-sm'
-        };
-    }
-
-    if (isSelected) {
-      return {
-        ...baseStyles,
-        bg: baseStyles.bg.replace('500', '400'),
-        border: 'border-1 border-white',
-        shadow: 'shadow ring-1 ring-white ring-opacity-50'
-      };
-    }
-
-    return baseStyles;
+    const tokens = getEstadoTokens(estado);
+    const baseBg = tokens.solidBg || 'bg-emerald-500';
+    const selectedBg = tokens.selectedBg || baseBg;
+    const baseBorder = tokens.border || 'border-emerald-600';
+    return {
+      bg: isSelected ? selectedBg : baseBg,
+      hover: tokens.hover,
+      border: isSelected ? 'border border-white' : baseBorder,
+      text: 'text-white',
+      icon: tokens.icon,
+      shadow: isSelected ? 'shadow ring-1 ring-white ring-opacity-50' : 'shadow-sm',
+      chipBg: tokens.chipBg,
+      chipText: tokens.chipText,
+      chipDot: tokens.chipDot,
+      label: tokens.label,
+    };
   };
 
   // OPTIMIZADO: Cargar bloqueos con caché
@@ -1330,8 +1358,8 @@ const CalendarScheduler: React.FC = () => {
     return (
       <div
         className={`absolute rounded-md shadow-sm cursor-pointer overflow-hidden 
-                 transition-all duration-150 z-10 ${styles.bg} ${styles.hover} ${styles.shadow}
-                 hover:shadow hover:scale-[1.01] hover:z-20 border-l-3 ${styles.border}
+                 transition-all duration-150 z-10 ${styles.bg} bg-opacity-100 ${styles.hover} ${styles.shadow}
+                 hover:shadow hover:scale-[1.01] hover:z-20 border-l-[3px] ${styles.border}
                  group pointer-events-auto active:scale-95 active:shadow-inner`}
         style={position}
         onClick={() => handleCitaClick(apt)}
@@ -1354,7 +1382,7 @@ const CalendarScheduler: React.FC = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-black/10 pointer-events-none"></div>
 
         <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${styles.badge} 
-                      border-1 border-white shadow-sm`}></div>
+                      border border-white shadow-sm`}></div>
 
         {renderCitaContent()}
 
@@ -1473,22 +1501,15 @@ const CalendarScheduler: React.FC = () => {
             <div className="bg-white rounded-xl p-3 border border-gray-200 shadow-sm mb-3">
               <h3 className="font-semibold text-gray-900 mb-2 text-sm">Estados</h3>
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                  <span className="text-xs text-gray-700">Confirmada</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                  <span className="text-xs text-gray-700">Reservada</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>
-                  <span className="text-xs text-gray-700">Proceso</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                  <span className="text-xs text-gray-700">Cancelada</span>
-                </div>
+                {['agendada', 'finalizado', 'facturado', 'cancelado', 'no_show'].map((estadoKey) => {
+                  const tokens = getEstadoTokens(estadoKey);
+                  return (
+                    <div key={estadoKey} className="flex items-center gap-1.5">
+                      <div className={`w-2.5 h-2.5 rounded-full ${tokens.chipDot}`}></div>
+                      <span className="text-xs text-gray-700">{tokens.label}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1711,20 +1732,16 @@ const CalendarScheduler: React.FC = () => {
           </div>
 
           <div className="mt-1.5 pt-1.5 border-t border-gray-100">
-            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium ${citaTooltip.cita.estado.toLowerCase() === 'confirmada' ? 'bg-green-100 text-green-700' :
-              citaTooltip.cita.estado.toLowerCase() === 'reservada' ? 'bg-blue-100 text-blue-700' :
-                citaTooltip.cita.estado.toLowerCase() === 'en proceso' ? 'bg-purple-100 text-purple-700' :
-                  citaTooltip.cita.estado.toLowerCase() === 'cancelada' ? 'bg-red-100 text-red-700' :
-                    'bg-gray-100 text-gray-700'
-              }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${citaTooltip.cita.estado.toLowerCase() === 'confirmada' ? 'bg-green-500' :
-                citaTooltip.cita.estado.toLowerCase() === 'reservada' ? 'bg-blue-500' :
-                  citaTooltip.cita.estado.toLowerCase() === 'en proceso' ? 'bg-purple-500' :
-                    citaTooltip.cita.estado.toLowerCase() === 'cancelada' ? 'bg-red-500' :
-                      'bg-gray-500'
-                }`}></div>
-              {citaTooltip.cita.estado}
-            </div>
+            {(() => {
+              const estadoTokens = getEstadoTokens(citaTooltip.cita.estado);
+              const estadoLabel = String(citaTooltip.cita.estado || estadoTokens.label);
+              return (
+                <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium ${estadoTokens.chipBg} ${estadoTokens.chipText}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${estadoTokens.chipDot}`}></div>
+                  {estadoLabel}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
