@@ -197,6 +197,7 @@ const CalendarScheduler: React.FC = () => {
     setShowAppointmentDetails(true);
   }, []);
 
+  // Paleta acordada: naranja = finalizada, gris = completada/facturada, rojo = cancelada, verde = agendada, amarillo = no show
   type EstadoCategoria = 'agendada' | 'finalizado' | 'facturado' | 'cancelado' | 'no_show' | 'default';
 
   const ESTADO_STYLE_MAP: Record<EstadoCategoria, {
@@ -221,8 +222,9 @@ const CalendarScheduler: React.FC = () => {
       chipText: 'text-green-700',
       chipDot: 'bg-green-500',
     },
+    // Finalizada -> naranja
     finalizado: {
-      label: 'Finalizado',
+      label: 'Finalizada',
       solidBg: 'bg-orange-500',
       selectedBg: 'bg-orange-400',
       hover: 'hover:bg-orange-600',
@@ -232,8 +234,9 @@ const CalendarScheduler: React.FC = () => {
       chipText: 'text-orange-800',
       chipDot: 'bg-orange-500',
     },
+    // Completada / Facturada -> gris
     facturado: {
-      label: 'Facturado',
+      label: 'Completada / Facturada',
       solidBg: 'bg-gray-500',
       selectedBg: 'bg-gray-400',
       hover: 'hover:bg-gray-600',
@@ -289,8 +292,13 @@ const CalendarScheduler: React.FC = () => {
       value.includes('no-show') ||
       value.includes('no_show')
     ) return 'no_show';
-    if (['finalizado', 'finalizada', 'completado', 'completada', 'terminado', 'terminada', 'realizado', 'realizada'].some(flag => value.includes(flag))) {
+    // Finalizada -> naranja
+    if (['finalizado', 'finalizada', 'terminado', 'terminada', 'realizado', 'realizada'].some(flag => value.includes(flag))) {
       return 'finalizado';
+    }
+    // Completada -> gris (mismo estilo facturado)
+    if (['completado', 'completada'].some(flag => value.includes(flag))) {
+      return 'facturado';
     }
     if (['confirmada', 'confirmado', 'agendada', 'agendado', 'reservada', 'reservado', 'pendiente', 'en proceso', 'en_proceso', 'proceso'].some(flag => value.includes(flag))) {
       return 'agendada';
@@ -1346,7 +1354,7 @@ const CalendarScheduler: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-center">
-              <div className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${styles.badge} text-white`}>
+              <div className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${styles.chipBg} ${styles.chipText}`}>
                 {styles.icon} {apt.estado}
               </div>
             </div>
@@ -1381,7 +1389,7 @@ const CalendarScheduler: React.FC = () => {
       >
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-black/10 pointer-events-none"></div>
 
-        <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${styles.badge} 
+        <div className={`absolute top-1 right-1 w-2 h-2 rounded-full ${styles.chipDot} 
                       border border-white shadow-sm`}></div>
 
         {renderCitaContent()}
@@ -1407,17 +1415,17 @@ const CalendarScheduler: React.FC = () => {
 
     return (
       <div
-        className="absolute z-8 rounded-md border border-red-300/90 bg-gradient-to-b from-red-100 to-red-50 shadow-sm overflow-hidden pointer-events-none"
+        className="absolute z-8 rounded-md border border-gray-300/70 bg-gradient-to-b from-gray-100 to-gray-50 shadow-sm overflow-hidden pointer-events-none"
         style={{ ...position, minHeight: 32 }}
       >
         <div className="h-full w-full px-1.5 py-1 flex flex-col overflow-hidden">
-          <div className="text-[9px] font-bold uppercase tracking-wide text-red-800 truncate">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-gray-800 truncate">
             Bloq · {initials}
           </div>
-          <div className="text-[9px] leading-3.5 font-medium text-red-900 truncate" title={motivo}>
+          <div className="text-[9px] leading-3.5 font-medium text-gray-700 truncate" title={motivo}>
             {motivo}
           </div>
-          <div className="mt-auto text-[8px] leading-3 text-red-800/90 truncate">
+          <div className="mt-auto text-[8px] leading-3 text-gray-600 truncate">
             {`${bloqueo.hora_inicio}-${bloqueo.hora_fin}`}
           </div>
         </div>

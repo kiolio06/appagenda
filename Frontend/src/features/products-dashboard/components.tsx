@@ -5,7 +5,6 @@ import { Input } from "../../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Badge } from "../../components/ui/badge";
-import { Separator } from "../../components/ui/separator";
 import { Button as UiButton } from "../../components/ui/button";
 import { Pencil } from "lucide-react";
 import {
