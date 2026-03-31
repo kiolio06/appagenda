@@ -454,7 +454,7 @@ async def facturar_cita_o_venta(
         "comprobante_de_pago": "Factura",
         "numero_comprobante": numero_comprobante,
         "fecha_comprobante": fecha_actual,
-        "monto": total_final,
+        "items": items,
         "profesional_id": profesional_id,
         "profesional_nombre": profesional_nombre,
         "historial_pagos": historial_pagos,
