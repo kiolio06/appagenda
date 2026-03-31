@@ -19,6 +19,7 @@ ALEGRA_BASE_URL = os.getenv("ALEGRA_BASE_URL", "https://api.alegra.com/api/v1")
 ALEGRA_EMAIL = os.getenv("ALEGRA_EMAIL")
 ALEGRA_TOKEN = os.getenv("ALEGRA_TOKEN")
 ALEGRA_ENABLED_SEDE_ID = os.getenv("ALEGRA_ENABLED_SEDE_ID", "").strip()
+ALEGRA_DEFAULT_KIND_OF_PERSON = os.getenv("ALEGRA_DEFAULT_KIND_OF_PERSON", "PERSON_ENTITY").strip()
 
 
 def alegra_is_enabled() -> bool:
@@ -47,12 +48,30 @@ def _auth_header() -> Dict[str, str]:
 
 
 def _build_contact_payload(client_doc: Dict[str, Any]) -> Dict[str, Any]:
-    name = (client_doc.get("nombre") or "").strip() or "Cliente"
+    nombre_completo = (client_doc.get("nombre") or "").strip() or "Cliente"
     email = (client_doc.get("correo") or "").strip()
     phone_primary = (client_doc.get("telefono") or "").strip()
     cedula = (client_doc.get("cedula") or "").strip()
 
-    payload: Dict[str, Any] = {"name": name}
+    person_type_raw = (client_doc.get("tipo_persona") or client_doc.get("person_type") or "").strip().lower()
+    if person_type_raw in {"juridica", "jurídica", "empresa", "legal_entity"}:
+        kind_of_person = "LEGAL_ENTITY"
+    else:
+        kind_of_person = "PERSON_ENTITY"
+
+    # Separar nombre y apellido
+    partes = nombre_completo.split(" ", 1)
+    first_name = partes[0]
+    last_name = partes[1] if len(partes) > 1 else "."
+
+    payload: Dict[str, Any] = {
+        "kindOfPerson": kind_of_person,
+        "regime": "SIMPLIFIED_REGIME",
+        "nameObject": {
+            "firstName": first_name,
+            "lastName": last_name,
+        },
+    }
 
     if email:
         payload["email"] = email
@@ -68,7 +87,6 @@ def _build_contact_payload(client_doc: Dict[str, Any]) -> Dict[str, Any]:
 
     return payload
 
-
 async def _create_alegra_contact(client_doc: Dict[str, Any]) -> str:
     payload = _build_contact_payload(client_doc)
 
@@ -81,11 +99,10 @@ async def _create_alegra_contact(client_doc: Dict[str, Any]) -> str:
 
     if response.status_code >= 400:
         raise HTTPException(
-            status_code=502,
+            status_code=response.status_code,
             detail={
-                "message": "No fue posible crear el contacto en Alegra automáticamente.",
-                "status_code": response.status_code,
-                "response": response.text,
+                "message": "No fue posible crear el contacto en Alegra.",
+                "alegra_response": response.text,
                 "payload": payload,
             },
         )
@@ -94,11 +111,44 @@ async def _create_alegra_contact(client_doc: Dict[str, Any]) -> str:
     contact_id = data.get("id")
     if not contact_id:
         raise HTTPException(
-            status_code=502,
+            status_code=response.status_code,
             detail="Alegra respondió sin id de contacto al crear el cliente.",
         )
 
     return str(contact_id)
+
+_PAYMENT_MAP = {
+    "efectivo":        ("CASH",   "CASH"),
+    "transferencia":   ("CASH",   "CREDIT_TRANSFER"),
+    "nequi":           ("CASH",   "CREDIT_TRANSFER"),
+    "daviplata":       ("CASH",   "CREDIT_TRANSFER"),
+    "link_pago":       ("CASH",   "CREDIT_TRANSFER"),
+    "link_de_pago":    ("CASH",   "CREDIT_TRANSFER"),
+    "tarjeta":         ("CASH",   "CREDIT_CARD"),
+    "tarjeta_credito": ("CASH",   "CREDIT_CARD"),
+    "tarjeta_debito":  ("CASH",   "DEBIT_CARD"),
+    "cheque":          ("CASH",   "CHECK"),
+    "giftcard":        ("CASH",   "CASH"),
+    "otro":            ("CASH",   "INSTRUMENT_NOT_DEFINED"),
+}
+
+def _resolve_payment_fields(invoice_doc: Dict[str, Any]) -> tuple:
+    """Retorna (paymentForm, paymentMethod) según los medios de pago usados."""
+    desglose = invoice_doc.get("desglose_pagos", {})
+    metodos = [k for k, v in desglose.items() if k != "total" and float(v or 0) > 0]
+
+    if len(metodos) == 1:
+        return _PAYMENT_MAP.get(metodos[0].lower(), ("CASH", "CASH"))
+    if len(metodos) > 1:
+        principal = max(metodos, key=lambda m: float(desglose.get(m, 0)))
+        return _PAYMENT_MAP.get(principal.lower(), ("CASH", "CASH"))
+
+    historial = invoice_doc.get("historial_pagos", [])
+    if historial:
+        metodo = (historial[0].get("metodo") or "").lower()
+        return _PAYMENT_MAP.get(metodo, ("CASH", "CASH"))
+
+    return ("CASH", "CASH")
 
 
 async def _build_alegra_payload(invoice_doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -148,16 +198,28 @@ async def _build_alegra_payload(invoice_doc: Dict[str, Any]) -> Dict[str, Any]:
 
         if item_type == "servicio":
             servicio_id = item.get("servicio_id")
-            servicio = await collection_servicios.find_one({"servicio_id": servicio_id})
-            if servicio:
-                alegra_item_id = servicio.get("alegra_item_id")
+            # ✅ 1. Leer directo del item (ya fue denormalizado al crear la venta)
+            alegra_item_id = item.get("alegra_item_id")
+
+            # ✅ 2. Fallback: buscar en colección de servicios
+            if not alegra_item_id:
+                servicio = await collection_servicios.find_one({"servicio_id": servicio_id})
+                if servicio:
+                    alegra_item_id = servicio.get("alegra_item_id")
+            
             if not alegra_item_id:
                 missing_mappings.append(f"servicio:{servicio_id}")
         elif item_type == "producto":
             producto_id = item.get("producto_id")
-            producto = await collection_productos.find_one({"id": producto_id})
-            if producto:
-                alegra_item_id = producto.get("alegra_item_id")
+
+            # ✅ Mismo patrón para productos
+            alegra_item_id = item.get("alegra_item_id")
+
+            if not alegra_item_id:
+                producto = await collection_productos.find_one({"id": producto_id})
+                if producto:
+                    alegra_item_id = producto.get("alegra_item_id")
+
             if not alegra_item_id:
                 missing_mappings.append(f"producto:{producto_id}")
 
@@ -185,6 +247,7 @@ async def _build_alegra_payload(invoice_doc: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=422, detail="La factura no tiene ítems válidos para Alegra.")
 
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    payment_form, payment_method = _resolve_payment_fields(invoice_doc)
 
     return {
         "date": today_str,
@@ -192,6 +255,8 @@ async def _build_alegra_payload(invoice_doc: Dict[str, Any]) -> Dict[str, Any]:
         "numberTemplate": {"id": str(alegra_number_template_id)},
         "client": {"id": str(alegra_contact_id)},
         "items": invoice_items,
+        "paymentForm": payment_form,      # ✅ "CASH" o "CREDIT"
+        "paymentMethod": payment_method,  # ✅ "CREDIT_TRANSFER", "CASH", etc.
         "observations": f"Factura interna {invoice_doc.get('numero_comprobante', '')}".strip(),
     }
 
@@ -206,11 +271,11 @@ async def _create_alegra_invoice(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     if response.status_code >= 400:
         raise HTTPException(
-            status_code=502,
+            status_code=response.status_code,
             detail={
-                "message": "Error creando factura en Alegra.",
-                "status_code": response.status_code,
-                "response": response.text,
+                "message": "Error en Alegra",
+                "alegra_response": response.text,
+                "payload": payload
             },
         )
 
@@ -218,7 +283,7 @@ async def _create_alegra_invoice(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _stamp_alegra_invoice(alegra_invoice_id: str) -> Dict[str, Any]:
-    payload = {"invoices": [str(alegra_invoice_id)]}
+    payload = {"ids": [str(alegra_invoice_id)]}
 
     async with httpx.AsyncClient(timeout=40) as client:
         response = await client.post(
@@ -229,11 +294,11 @@ async def _stamp_alegra_invoice(alegra_invoice_id: str) -> Dict[str, Any]:
 
     if response.status_code >= 400:
         raise HTTPException(
-            status_code=502,
+            status_code=response.status_code,
             detail={
-                "message": "Error enviando factura a timbrado/electrónica en Alegra.",
-                "status_code": response.status_code,
-                "response": response.text,
+                "message": "Error en Alegra",
+                "alegra_response": response.text,
+                "payload": payload
             },
         )
 
