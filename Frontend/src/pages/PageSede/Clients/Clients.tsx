@@ -9,6 +9,7 @@ import type { Cliente } from "../../../types/cliente"
 import { clientesService, type ClientesPaginadosMetadata } from "./clientesService"
 import { useAuth } from "../../../components/Auth/AuthContext"
 import { Loader } from "lucide-react"
+import { useClientSmartSearch } from "../../../hooks/useClientSmartSearch"
 
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -313,6 +314,29 @@ export default function ClientsPage() {
     }
   }, [getAccessToken, selectedClient, loadClientes, metadata?.pagina, searchTerm])
 
+  const fetchSmartResults = useCallback(async (query: string) => {
+    const token = getAccessToken()
+    if (!token || !query.trim()) return []
+
+    const { clientes: fetched } = await clientesService.getClientesPaginados(token, {
+      pagina: 1,
+      limite: 25,
+      filtro: query
+    })
+
+    return fetched.map(asegurarClienteCompleto)
+  }, [getAccessToken])
+
+  const {
+    results: smartResults,
+    isLoading: smartLoading,
+    error: smartError,
+  } = useClientSmartSearch(searchTerm, {
+    baseClientes: clientes,
+    fetchRemote: fetchSmartResults,
+    maxSuggestions: 8,
+  })
+
   if (authLoading || (Boolean(user) && isInitialLoading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
@@ -356,6 +380,9 @@ export default function ClientsPage() {
             onPageChange={handlePageChange}
             onSearch={handleSearch}
             searchValue={searchTerm}
+            smartResults={smartResults}
+            smartLoading={smartLoading}
+            smartError={smartError}
           />
         )}
       </div>
