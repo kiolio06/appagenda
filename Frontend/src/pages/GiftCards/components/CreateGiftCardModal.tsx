@@ -13,6 +13,7 @@ import { Input } from "../../../components/ui/input";
 import { giftcardsService } from "../giftcardsService";
 import type { GiftCardClientOption, GiftCardCreatePayload } from "../types";
 import { formatMoney, toPositiveNumber } from "./utils";
+import { rankClientsByRelevance, toClienteFromPartial, type RankedClient, getLastVisitLabel } from "../../../lib/client-search";
 
 const PRESET_AMOUNTS = [50000, 100000, 150000, 200000, 300000];
 const CLIENTS_SEARCH_PAGE_SIZE = 30;
@@ -112,6 +113,7 @@ export function CreateGiftCardModal({
 }: CreateGiftCardModalProps) {
   const [knownClients, setKnownClients] = useState<GiftCardClientOption[]>([]);
   const [buyerOptions, setBuyerOptions] = useState<GiftCardClientOption[]>([]);
+  const [rankedSuggestions, setRankedSuggestions] = useState<RankedClient[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(false);
   const [clientsError, setClientsError] = useState<string | null>(null);
 
@@ -139,6 +141,7 @@ export function CreateGiftCardModal({
     [knownClients, selectedBuyerId]
   );
   const hasBuyerQuery = buyerSearch.trim().length > 0;
+  const [isBuyerFocused, setIsBuyerFocused] = useState(false);
 
   const totalAmount = amountMode === "preset" ? presetAmount : toPositiveNumber(freeAmountInput);
 
@@ -170,11 +173,21 @@ export function CreateGiftCardModal({
 
         if (cancelled || requestId !== latestBuyerSearchRequestRef.current) return;
 
+        const merged = mergeClientOptions(mergeClientOptions([], knownClients), result.clients);
+        setKnownClients(merged);
+
+        const ranked = rankClientsByRelevance(
+          merged.map(toClienteFromPartial),
+          query,
+          10
+        );
+
+        setRankedSuggestions(ranked);
         setBuyerOptions(result.clients);
-        setKnownClients((prev) => mergeClientOptions(prev, result.clients));
       } catch (error) {
         if (cancelled || requestId !== latestBuyerSearchRequestRef.current) return;
         setBuyerOptions([]);
+        setRankedSuggestions([]);
         setClientsError(error instanceof Error ? error.message : "No se pudieron cargar clientes");
       } finally {
         if (!cancelled && requestId === latestBuyerSearchRequestRef.current) {
@@ -386,6 +399,8 @@ export function CreateGiftCardModal({
               <Input
                 value={buyerSearch}
                 onChange={(event) => setBuyerSearch(event.target.value)}
+                onFocus={() => setIsBuyerFocused(true)}
+                onBlur={() => setTimeout(() => setIsBuyerFocused(false), 120)}
                 placeholder="Buscar cliente"
                 className="h-11 pl-9"
               />
@@ -413,44 +428,65 @@ export function CreateGiftCardModal({
               <p className="text-xs text-gray-500">Selecciona un cliente comprador de la lista.</p>
             )}
 
-            {hasBuyerQuery ? (
+            {hasBuyerQuery && isBuyerFocused && (
               <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-                <div className="max-h-56 overflow-y-auto">
-                  {!isLoadingClients && buyerOptions.length === 0 ? (
+                <div className="max-h-64 overflow-y-auto">
+                  {isLoadingClients && (
+                    <div className="flex items-center gap-2 px-3 py-3 text-xs text-gray-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Cargando clientes...
+                    </div>
+                  )}
+
+                  {!isLoadingClients && rankedSuggestions.length === 0 && (
                     <p className="px-3 py-3 text-xs text-gray-500">
                       No hay resultados para la búsqueda actual.
                     </p>
-                  ) : (
-                    buyerOptions.map((client) => {
-                      const isSelected = client.id === selectedBuyerId;
-
-                      return (
-                        <button
-                          key={client.id}
-                          type="button"
-                          onClick={() => setSelectedBuyerId(client.id)}
-                          className={`flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 ${
-                            isSelected ? "bg-gray-100" : "hover:bg-gray-50"
-                          }`}
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-gray-900">{client.nombre}</p>
-                            <p className="truncate text-xs text-gray-500">
-                              {client.email || client.telefono || "Sin datos de contacto"}
-                            </p>
-                          </div>
-                          {isSelected ? (
-                            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
-                              Seleccionado
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })
                   )}
+
+                  {rankedSuggestions.map((result) => {
+                    const client = result.cliente;
+                    const option = buyerOptions.find((c) => c.id === client.id) || {
+                      id: client.id,
+                      nombre: client.nombre,
+                      email: client.email,
+                      telefono: client.telefono,
+                      cedula: client.cedula,
+                    };
+                    const isSelected = option.id === selectedBuyerId;
+                    const displayCedula = (option as any).cedula ?? client.cedula;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setSelectedBuyerId(option.id)}
+                        className={`flex w-full items-start justify-between gap-2 border-b border-gray-100 px-3 py-2 text-left last:border-b-0 ${
+                          isSelected ? "bg-gray-100" : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-900">{option.nombre}</p>
+                          <p className="truncate text-xs text-gray-700">
+                            {option.telefono || "—"} • {displayCedula || "—"}
+                          </p>
+                          {option.email ? (
+                            <p className="truncate text-[11px] text-gray-600">{option.email}</p>
+                          ) : null}
+                          <p className="text-[11px] text-gray-500">{getLastVisitLabel(client)}</p>
+                        </div>
+                        {isSelected ? (
+                          <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700">
+                            Seleccionado
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
+            )}
+            {!hasBuyerQuery && (
               <p className="text-xs text-gray-500">Escribe el nombre del cliente para buscar.</p>
             )}
 
