@@ -11,6 +11,7 @@ import { clientesService, type ClientesPaginadosMetadata } from "./clientesServi
 import { sedeService } from "../Sedes/sedeService" // ✅ Cambiado de sedesService a sedeService
 import { useAuth } from "../../../components/Auth/AuthContext"
 import { Loader } from "lucide-react"
+import { useClientSmartSearch } from "../../../hooks/useClientSmartSearch"
 
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -292,6 +293,30 @@ export default function ClientsPage() {
     }
   }, [getAccessToken, selectedClient, loadClientes, metadata?.pagina, searchTerm, selectedSede])
 
+  const fetchSmartResults = useCallback(async (query: string) => {
+    const token = getAccessToken()
+    if (!token || !query.trim()) return []
+
+    const { clientes: fetched } = await clientesService.getClientesPaginados(token, {
+      pagina: 1,
+      limite: 25,
+      filtro: query,
+      sedeId: selectedSede !== "all" ? selectedSede : undefined,
+    })
+
+    return fetched
+  }, [getAccessToken, selectedSede])
+
+  const {
+    results: smartResults,
+    isLoading: smartLoading,
+    error: smartError,
+  } = useClientSmartSearch(searchTerm, {
+    baseClientes: clientes,
+    fetchRemote: fetchSmartResults,
+    maxSuggestions: 8,
+  })
+
   // Mostrar loading mientras se verifica la autenticación
   if (authLoading || (Boolean(user) && isInitialLoading)) {
     return (
@@ -344,6 +369,9 @@ export default function ClientsPage() {
             onItemsPerPageChange={handleItemsPerPageChange}
             itemsPerPage={itemsPorPagina}
             isFetching={isFetching}
+            smartResults={smartResults}
+            smartLoading={smartLoading}
+            smartError={smartError}
           />
         )}
       </div>
