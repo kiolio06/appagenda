@@ -1245,7 +1245,7 @@ export default function DashboardPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex flex-col h-screen items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold">Acceso no autorizado</h2>
           <p className="mt-2 text-gray-600">Por favor inicia sesión para ver el dashboard.</p>
@@ -1256,7 +1256,7 @@ export default function DashboardPage() {
 
   if (loadingSedes) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex flex-col h-screen items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-gray-200 border-t-gray-800 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Cargando información de la sede...</p>
@@ -1267,7 +1267,7 @@ export default function DashboardPage() {
 
   if (!selectedSede) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex flex-col h-screen items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold">Sede no disponible</h2>
           <p className="mt-2 text-gray-600">No se pudo determinar tu sede asignada.</p>
@@ -1290,7 +1290,7 @@ export default function DashboardPage() {
 
   if (!isGlobalView && !currentSede) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex flex-col h-screen items-center justify-center">
           <div className="text-center">
             <h2 className="text-2xl font-bold">Sede no encontrada</h2>
             <p className="mt-2 text-gray-600">No se encontró información para la sede {sedeNombreDisplay}</p>
@@ -1300,7 +1300,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex flex-col h-screen bg-white">
       <Sidebar />
 
       <main className="flex-1 overflow-y-auto">
